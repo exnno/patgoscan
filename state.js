@@ -1,0 +1,69 @@
+/*
+ * PATGo Scan — state.js
+ * (c) 2026 Peter Birchley. All rights reserved.
+ *
+ * The single global `state` object. Everything the app knows at runtime.
+ *
+ * Three kinds of field live here and they behave differently:
+ *   PERSISTED  — written by save(), restored by load(), carried in the backup.
+ *   TRANSIENT  — UI only. Sheets, pending scans, banners. Never saved.
+ *   DERIVED    — computed caches. Never saved, never backed up, never validated.
+ *
+ * ⚠ A new TRANSIENT must also be cleared in setView() (render.js) or it will
+ * survive navigation and reopen a sheet on a screen that knows nothing about it.
+ */
+
+let state = {
+
+  // --- Navigation -----------------------------------------------------------
+  view: 'scan',              // 'scan' | 'log' | 'settings' | 'settingsScanner'
+                             // | 'settingsLists' | 'settingsBackup' | 'about'
+
+  // --- Persisted data -------------------------------------------------------
+  records: [],               // the scan log. See log.js for the record shape.
+  engineer: '',              // stamped on every record and into the filename
+  mode: MODE_AUDIT,          // sticky across restarts — decision 2A
+  currentLocationId: '',     // id of the location record now in force
+
+  failReasons: [],
+  descriptions: [],
+
+  // --- Preferences ----------------------------------------------------------
+  theme: 'auto',
+  haptic: true,
+  sound: false,
+  scannerEnabled: true,      // DEFAULT ON
+  scannerPaired: false,      // DEFAULT OFF
+  scanSpeed: SCAN_SPEED_DEFAULT,
+
+  // --- Transient: the scan loop ---------------------------------------------
+  // locationArmed: the engineer has tapped the location bar and the NEXT scan
+  // is a location, not an asset. It disarms itself once used or on cancel.
+  locationArmed: false,
+
+  // pending: an asset has been scanned but no result recorded yet. This is the
+  // half-finished record sitting on the screen with PASS/FAIL waiting. It is
+  // deliberately NOT in `records` — an item with no result is not data, and
+  // writing it early would mean a mis-scan had to be found and deleted rather
+  // than simply re-scanned over.
+  pending: null,             // { code, mode, description, cls }
+
+  // --- Transient: sheets ----------------------------------------------------
+  newItemSheet: null,        // { code } — initial mode, gathering desc + class
+  newLocationSheet: null,    // { code } — initial mode, gathering client/floor/room
+  failSheet: null,           // { } — picking a reason for the pending item
+  editSheet: null,           // { id } — correcting a record from the log
+  confirmSheet: null,
+  infoSheet: null,
+
+  // --- Transient: UI --------------------------------------------------------
+  welcomeSeen: true,         // set false by load() when the modal is due
+  toast: '',
+  updateBanner: false,
+  logSearch: '',
+  scannerTestLog: [],        // diagnostic rows, settings scanner page only
+  bugDraft: null,
+
+  // --- Derived --------------------------------------------------------------
+  _lastRenderedView: '',
+};

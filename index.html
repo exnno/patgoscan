@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<!-- PATGo Scan PWA — (c) 2026 Peter Birchley. All rights reserved. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#b45309" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#78350f" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PATGo Scan">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <title>PATGo Scan</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app"></div>
+  <!-- ORDER MATTERS — load top to bottom. Later files may call functions
+       defined in earlier ones, because every cross-file call resolves at call
+       time rather than at parse time. boot.js runs the startup block and MUST
+       stay LAST.
+
+       data → helpers → persistence → model → input → output → UI → boot -->
+  <script src="config.js"></script>
+  <script src="state.js"></script>
+  <script src="utils.js"></script>
+  <script src="storage.js"></script>
+  <script src="log.js"></script>
+  <script src="feedback.js"></script>
+  <!-- scanner.js sits before render.js and dispatch.js purely so the document
+       level capture listener reads alongside the other input handling. It hands
+       the text to routeScan() (dispatch.js), which is defined later and
+       resolves at call time. -->
+  <script src="scanner.js"></script>
+  <script src="csv.js"></script>
+  <script src="backup.js"></script>
+  <script src="bugreport.js"></script>
+  <script src="render.js"></script>
+  <script src="dispatch.js"></script>
+  <script src="boot.js"></script>
+</body>
+</html>
