@@ -79,7 +79,15 @@ function locationLabel(loc) {
 // register can still resolve it.
 function itemLocationLabel(rec) {
   if (!rec) return '';
-  const loc = locationRecordById(rec.locationId);
+  return locationLineFor(rec.locationId, rec.locationCode);
+}
+
+// V4. The same one-liner, but built from an id that is NOT yet on any record.
+// The edit sheet has to show the location you have just PICKED, before Save
+// writes it — reading it back off the record would show the old one right up
+// until the moment it changed, which is the one moment it matters.
+function locationLineFor(locId, fallbackCode) {
+  const loc = locationRecordById(locId);
   if (loc) {
     const label = locationLabel(loc);
     // locationLabel() falls back to the code when a location has no room,
@@ -87,7 +95,7 @@ function itemLocationLabel(rec) {
     // Appending the code to itself there would read "L-204 (L-204)".
     return label === loc.code ? loc.code : label + ' (' + loc.code + ')';
   }
-  if (isNonEmptyString(rec.locationCode)) return rec.locationCode;
+  if (isNonEmptyString(fallbackCode)) return fallbackCode;
   return '';
 }
 
@@ -106,6 +114,51 @@ function itemLocationShort(rec) {
 
 function itemRecords() {
   return state.records.filter(r => r.type === 'item');
+}
+
+// ---------------------------------------------------------------------------
+// V4 — what the move picker needs to know about each location
+//
+// ⚠ A LIST OF BARE BARCODES IS A LIST OF NOTHING. An audit location has no
+// client, floor or room on it — locationLabel() falls back to the code — so a
+// picker showing labels alone offers the engineer thirty rows reading L-201,
+// L-202, L-203 and no way to tell which is the kitchen. Three things already on
+// the phone identify a place without anybody typing anything:
+//
+//   ts       — when you were there. You may not know L-204 from L-207, but you
+//              know the kitchen was before the brew and the corridor after.
+//   count    — the room where you did twenty things is not the cupboard where
+//              you did one.
+//   samples  — WHAT you tested there. Far and away the strongest of the three.
+//
+// ⚠ `samples` IS EMPTY ON A PURE AUDIT JOB and that is honest, not a bug: audit
+// items are result-only by design, so there are no descriptions to show. The
+// row falls back to time and count, which is genuinely all the phone knows.
+//
+// One pass over the records, not one pass per location — this runs while a
+// sheet is open on a phone that may hold a long day's work.
+function locationChoices(sampleMax) {
+  const max = clampInt(sampleMax, 1, 6, 3);
+  const locs = [];
+  const byId = {};
+  for (let i = 0; i < state.records.length; i++) {
+    const r = state.records[i];
+    if (r.type !== 'location') continue;
+    const row = { rec: r, count: 0, samples: [] };
+    byId[r.id] = row;
+    locs.push(row);
+  }
+  // Newest item first, so `samples` holds the most recently tested things —
+  // what the engineer did last in that room is what they remember about it.
+  const items = state.records.filter(r => r.type === 'item').sort(byNewest);
+  for (let i = 0; i < items.length; i++) {
+    const row = byId[items[i].locationId];
+    if (!row) continue;
+    row.count++;
+    const d = cleanText(items[i].description, 80);
+    if (d && row.samples.length < max && row.samples.indexOf(d) === -1) row.samples.push(d);
+  }
+  return locs.sort((a, b) => byNewest(a.rec, b.rec));
 }
 
 function unexportedCount() {
@@ -251,6 +304,22 @@ function updateRecordFields(id, fields) {
     rec.failReason = rec.result === 'fail' ? cleanText(fields.failReason, 120) : '';
     if (typeof fields.description === 'string') rec.description = cleanText(fields.description, 80);
     if (CLASS_OPTIONS.indexOf(fields.cls) !== -1) rec.cls = fields.cls;
+    // V4 — the move. ⚠ BOTH FIELDS OR NEITHER (rule 12). The id is the pointer
+    // and the code is the copy the client reads; writing one without the other
+    // leaves an item filed under one location on screen and exported under
+    // another. They are only ever set together, from a location record that
+    // actually exists.
+    //
+    // ⚠ AN UNRESOLVABLE ID IS IGNORED, NOT WRITTEN. Clearing the code to match
+    // would throw away the barcode the item was genuinely scanned under, which
+    // is the one thing that survives a deleted location on purpose.
+    if (isNonEmptyString(fields.locationId) && fields.locationId !== rec.locationId) {
+      const loc = locationRecordById(fields.locationId);
+      if (loc) {
+        rec.locationId = loc.id;
+        rec.locationCode = loc.code;
+      }
+    }
   } else {
     if (typeof fields.client === 'string') rec.client = cleanText(fields.client, 80);
     if (typeof fields.floor === 'string') rec.floor = cleanText(fields.floor, 60);

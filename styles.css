@@ -324,19 +324,25 @@ li { margin-bottom: 8px; }
 }
 .suggestion-item:last-child { border-bottom: none; }
 
-/* A fact on a sheet, not a control. V2 uses it for the location on the item
-   edit sheet. ⚠ It deliberately looks NOTHING like .reasonrow, which sits a
-   few lines below it and is tappable: no border, no card, no accent. An
-   engineer must be able to tell in a glance which of the two they can change,
-   and read-only things that look tappable get tapped. */
-.metarow {
-  display: flex; align-items: baseline; gap: 10px;
-  margin: 2px 0 4px; padding: 0 2px;
+/* V4 — THE MOVE PICKER'S ROWS. Three lines, and each line is there because a
+   list of bare barcodes identifies nothing: an audit location has no room name,
+   so L-201, L-202 and L-203 are indistinguishable without the time you were
+   there, how much you did there, and what you tested. The third line is absent
+   on a pure audit job, where items have no descriptions to show — the row is
+   built to read correctly with it missing, not to leave a gap. */
+.locpick {
+  display: flex; flex-direction: column; gap: 3px;
+  min-height: var(--tap); padding: 12px 14px; text-align: left;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--bg-alt); color: var(--ink); cursor: pointer;
 }
-.metarow-label {
-  flex: none; font-size: 13px; font-weight: 600; color: var(--ink-soft);
+.locpick.is-on { border-color: var(--accent); border-width: 2px; padding: 11px 13px; }
+.locpick-main { font-size: 16px; font-weight: 600; }
+.locpick-sub { font-size: 13px; color: var(--ink-soft); }
+.locpick-items {
+  font-size: 13px; color: var(--ink-soft); font-style: italic;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.metarow-value { flex: 1; font-size: 15px; }
 
 /* The fail reason on the edit sheet: a value plus a way to change it, not a
    text box. Hidden outright on a pass — a passed item has no reason. */
@@ -410,6 +416,14 @@ label.btn-wide { line-height: 24px; }
   padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
   border-radius: 18px 18px 0 0; background: var(--bg); color: var(--ink);
 }
+/* ⚠ V4 — THE SAFE-AREA INSET IS WRONG WITH THE KEYBOARD UP. It exists to clear
+   the home indicator, and with a keyboard on screen there is no home indicator
+   to clear: the sheet ends where the keyboard begins, and the inset becomes a
+   dead strip between the buttons and the keys. feedback.js adds .is-keyboard to
+   the backdrop when the visual viewport is much shorter than the layout one,
+   which is the only signal iOS gives that the keyboard is up. Carried from V3,
+   where it was left alone rather than made conditional. */
+.sheet-backdrop.is-keyboard .bulk-sheet { padding-bottom: 20px; }
 .sheet-title { font-size: 19px; margin-bottom: 6px; }
 .sheet-code {
   font-size: 22px; font-weight: 700; color: var(--accent);

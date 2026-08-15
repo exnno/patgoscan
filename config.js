@@ -7,13 +7,13 @@
  * read in one place — that is what makes the backup file provably complete.
  */
 
-const APP_VERSION = 'V3';
+const APP_VERSION = 'V4';
 
 // The welcome modal key carries the version IN THE VALUE, never in the
 // identifier. A version-named identifier caused a white screen in the parent
 // app (PATGo v61) when one file was updated and another was not.
 const WELCOME_KEY = 'scan:welcome';
-const WELCOME_VERSION = 'V3';
+const WELCOME_VERSION = 'V4';
 
 // ---------------------------------------------------------------------------
 // Storage keys

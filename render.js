@@ -445,9 +445,9 @@ function renderAbout() {
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V4</b> — an item logged in the wrong place can now be moved: tap it in the log and change its location. The picker shows each location's time, how many items you did there and what they were, so a bare barcode is still recognisable. Correcting an item also gets the Quick Pick buttons and the description suggestions the new item sheet has.</p>
       <p class="muted small"><b>V3</b> — the boxes that ask you to type something no longer jump about when the keyboard comes up. They now sit above the keyboard with their buttons reachable, instead of behind it.</p>
       <p class="muted small"><b>V2</b> — scanners sending characters more slowly are now accepted, which fixes scans being silently rejected. New PATGo colours and a new icon; Initial mode tints green. The log now shows which location an item was tested in, and Settings has been tidied up.</p>
-      <p class="muted small"><b>V1.1</b> — Quick Pick buttons on the new item sheet, with your own lists you can edit in Settings. The description dropdown no longer moves the form around as you type. Correcting an item to FAIL in the log now asks for the reason.</p>
 
       <p class="muted small">© 2026 Peter Birchley. All rights reserved.</p>
     </main>
@@ -460,10 +460,12 @@ function renderWelcome() {
     <main class="main welcome">
       <h1>PATGo Scan</h1>
 
-      <h2 class="sec">New in V3</h2>
+      <h2 class="sec">New in V4</h2>
       <ul>
-        <li><b>The typing boxes have stopped jumping about.</b> When you set up a new location, or type a barcode in by thumb, the box now sits above the keyboard with its buttons where you can reach them. Before, the keyboard covered the bottom of it and the whole screen slid around as you typed.</li>
-        <li>Nothing else has changed. Your records, lists and settings are exactly as you left them.</li>
+        <li><b>An item can be moved to another location.</b> Scanned something before you set the location, or set the wrong one? Tap the item in the log, tap Change next to Location, pick the right one. It only offers locations you have actually scanned.</li>
+        <li><b>The picker tells you which is which.</b> Every location shows the time you were there, how many items you did and the first few of them — so a location that is only a barcode is still one you can recognise. Give a location a room name (tap it in the log) and it shows that instead.</li>
+        <li><b>Correcting a description is now as quick as entering one.</b> The Quick Pick buttons and the suggestions as you type are on the edit screen too, not just on a new item.</li>
+        <li>Your records, lists and settings are exactly as you left them.</li>
       </ul>
 
       <h2 class="sec">The whole app in four lines</h2>
@@ -701,6 +703,72 @@ function openFailSheet(onPick, onCancel) {
   });
 }
 
+// V4 — the move picker. Which location an item belongs to, chosen from the
+// ones already in the log.
+//
+// ⚠ IT CAN ONLY OFFER LOCATIONS THAT EXIST. That is not a limitation to work
+// around, it is the answer to the question the backlog raised: an item cannot
+// be moved to a location that has never been scanned, so there is never an item
+// row in the export pointing at a location row that is not in the file.
+//
+// ⚠ NO SCANNING FROM HERE, DELIBERATELY. The obvious gesture — stand in the
+// room and scan its label — cannot work: the scanner refuses to collect while
+// a sheet is open, by construction since V1, and mutation M24 and M78 both
+// exist to keep it that way. Doing it properly means a new armed mode in the
+// dispatch grammar. It is in the backlog, not smuggled in here.
+//
+// ⚠ THE LIST IS BUILT ONCE AND NEVER REBUILT while the sheet lives — the same
+// rule the Quick Pick grid follows. Nothing here re-sorts or re-filters under
+// the finger.
+function openLocationPickerSheet(currentId, onPick, onCancel) {
+  const back = (typeof onCancel === 'function') ? onCancel : () => render();
+  const sheet = _openSheet('Location');
+  const rows = locationChoices(3);
+
+  const body = rows.length
+    ? `<div class="reasonlist">
+        ${rows.map(row => {
+          const loc = row.rec;
+          const label = locationLabel(loc);
+          // locationLabel() returns the bare code for an unnamed location, so
+          // the sub-line must not print it a second time — "L-204 · L-204 ·
+          // 09:42" is how a row stops being readable at a glance.
+          const named = label !== loc.code;
+          const sub = [named ? loc.code : '', timeOfDay(loc.ts),
+            row.count + (row.count === 1 ? ' item' : ' items')]
+            .filter(isNonEmptyString).join(' · ');
+          return `
+          <button type="button" class="locpick${loc.id === currentId ? ' is-on' : ''}" data-loc="${escapeHTML(loc.id)}">
+            <span class="locpick-main">${escapeHTML(label)}</span>
+            <span class="locpick-sub">${escapeHTML(sub)}</span>
+            ${row.samples.length
+              ? `<span class="locpick-items">${escapeHTML(row.samples.join(', '))}</span>`
+              : ''}
+          </button>`;
+        }).join('')}
+      </div>`
+    : `<p class="muted">No locations scanned yet. Scan a location barcode first, then come back.</p>`;
+
+  sheet.innerHTML = `
+    <h3 class="sheet-title">Which location?</h3>
+    <p class="sheet-body">Moving this item files it under a different location in the export. Nothing else about it changes.</p>
+    ${body}
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" id="lp-cancel">Cancel</button>
+    </div>`;
+
+  sheet.querySelector('#lp-cancel').onclick = () => { closeSheet(); back(); };
+  if (rows.length) {
+    sheet.querySelector('.reasonlist').addEventListener('click', (e) => {
+      const btn = e.target.closest('.locpick');
+      if (!btn) return;
+      const locId = btn.getAttribute('data-loc');
+      closeSheet();
+      onPick(locId);
+    });
+  }
+}
+
 // The correction path. One sheet for both record types.
 //
 // ⚠ V1.1: `draft` IS HOW THE SHEET SURVIVES A TRIP TO THE REASON PICKER. Opening
@@ -747,24 +815,35 @@ function openEditSheet(id, draft) {
     const curRes = (typeof d.result === 'string') ? d.result : rec.result;
     const curReason = (typeof d.failReason === 'string') ? d.failReason : rec.failReason;
 
-    // V2: read-only. Changing which location an item belongs to moves a row
-    // under a different heading in the client's CSV, so it needs its own
-    // picker and its own release — it is in the backlog. Showing it costs
-    // nothing and is what the engineer actually needed to make a correction
-    // safely: "is this the kettle in the staff room or the one upstairs?"
-    const locLine = itemLocationLabel(rec);
+    // V4: the location is now changeable, and the draft carries the PICKED one
+    // — see the note on locationLineFor() in log.js. It became a .reasonrow
+    // rather than the old read-only .metarow because it is now the same shape
+    // of thing as the fail reason: a value, and a way to change it. The
+    // deliberate visual difference between the two rows was the whole point of
+    // .metarow, and it stops being true the moment the row is tappable.
+    const curLocId = (typeof d.locationId === 'string') ? d.locationId : rec.locationId;
+    const locLine = locationLineFor(curLocId, rec.locationCode);
+    const picks = quickPickItems();
 
     sheet.innerHTML = `
       <h3 class="sheet-title">Item</h3>
       <p class="sheet-code">${escapeHTML(rec.code)}</p>
-      <div class="metarow">
-        <span class="metarow-label">Location</span>
-        <span class="metarow-value">${locLine
+      <div class="reasonrow" id="ed-locrow">
+        <span class="reasonrow-label">Location</span>
+        <span class="reasonrow-value" id="ed-loctext">${locLine
           ? escapeHTML(locLine)
-          : '<span class="muted">Not recorded</span>'}</span>
+          : 'Not recorded'}</span>
+        <button type="button" class="linkbtn" id="ed-locchange">Change</button>
       </div>
       <label class="lbl" for="ed-desc">Description</label>
-      <input type="text" id="ed-desc" class="field" value="${escapeHTML(curDesc)}" autocapitalize="words">
+      ${picks.length ? `<div class="quick-grid" id="ed-quick">
+        ${picks.map(p => `<button type="button" class="quick-btn" data-q="${escapeHTML(p)}">${escapeHTML(p)}</button>`).join('')}
+      </div>` : ''}
+      <div class="desc-wrap">
+        <input type="text" id="ed-desc" class="field" value="${escapeHTML(curDesc)}"
+               autocomplete="off" autocapitalize="words" spellcheck="false">
+        <div id="ed-suggest" class="suggest is-hidden"></div>
+      </div>
       <label class="lbl">Class</label>
       <div class="classpick" id="ed-class">
         ${CLASS_OPTIONS.map(c => `<button type="button" class="class-opt${curCls === c ? ' is-on' : ''}" data-cls="${c}">Class ${c}</button>`).join('')}
@@ -788,14 +867,91 @@ function openEditSheet(id, draft) {
     let cls = curCls;
     let res = curRes;
     let reason = curReason;
+    let locId = curLocId;
 
     // Everything typed or tapped so far, in the shape openEditSheet takes back.
+    // ⚠ V4: `locationId` JOINS THE DRAFT AND IT IS NOT DECORATION. The picker
+    // is a sheet, and opening any sheet destroys this one — so without it,
+    // changing the location would silently discard the description you had just
+    // fixed in the same visit. That is the exact loss `draft` was invented for
+    // in V1.1 on the reason picker; a second round trip needs the same care.
     const snapshot = () => ({
       description: sheet.querySelector('#ed-desc').value,
       cls: cls,
       result: res,
       failReason: reason,
+      locationId: locId,
     });
+
+    // V4. Same shape as askReason() below: snapshot, leave, come home.
+    const askLocation = () => {
+      const draftNow = snapshot();
+      closeSheet();
+      openLocationPickerSheet(
+        locId,
+        (picked) => {
+          draftNow.locationId = picked;
+          openEditSheet(id, draftNow);
+        },
+        () => openEditSheet(id, draftNow)
+      );
+    };
+
+    sheet.querySelector('#ed-locchange').onclick = askLocation;
+
+    // V4 — the description field now behaves as the new item sheet's does: a
+    // static Quick Pick grid and an overlaid suggestion list. Both rules from
+    // that sheet carry over intact: the grid is never rebuilt, and the dropdown
+    // is absolutely positioned so showing it moves nothing below it.
+    //
+    // ⚠ NOTHING HERE FOCUSES THE FIELD. The V1.1 rule holds: raising the
+    // keyboard would bury the very grid the engineer is meant to tap.
+    const edDesc = sheet.querySelector('#ed-desc');
+    const edSuggest = sheet.querySelector('#ed-suggest');
+
+    const edMarkGrid = () => {
+      const v = cleanText(edDesc.value, 80).toLowerCase();
+      sheet.querySelectorAll('.quick-btn').forEach(b =>
+        b.classList.toggle('is-on', (b.getAttribute('data-q') || '').toLowerCase() === v));
+    };
+
+    const edHideSuggest = () => {
+      edSuggest.innerHTML = '';
+      edSuggest.classList.add('is-hidden');
+    };
+
+    const edPaintSuggest = () => {
+      const typed = cleanText(edDesc.value, 80);
+      if (!typed) { edHideSuggest(); edMarkGrid(); return; }
+      const list = suggestDescriptions(typed);
+      if (!list.length) { edHideSuggest(); edMarkGrid(); return; }
+      edSuggest.innerHTML = list.map(x =>
+        `<button type="button" class="suggestion-item" data-d="${escapeHTML(x)}">${escapeHTML(x)}</button>`).join('');
+      edSuggest.classList.remove('is-hidden');
+      edMarkGrid();
+    };
+
+    // ⚠ pointerdown, NOT click — a click races the blur teardown and iOS loses
+    // the tap. This cost the parent app a hotfix and it is no different here.
+    edSuggest.addEventListener('pointerdown', (e) => {
+      const b = e.target.closest('.suggestion-item');
+      if (!b) return;
+      e.preventDefault();
+      edDesc.value = b.getAttribute('data-d') || '';
+      edHideSuggest();
+      edMarkGrid();
+    });
+    edDesc.addEventListener('input', edPaintSuggest);
+
+    if (picks.length) {
+      sheet.querySelector('#ed-quick').addEventListener('click', (e) => {
+        const b = e.target.closest('.quick-btn');
+        if (!b) return;
+        edDesc.value = b.getAttribute('data-q') || '';
+        edHideSuggest();
+        edMarkGrid();
+      });
+    }
 
     // ⚠ THE SAME PICKER THE SCAN SCREEN USES, not a second copy of the list. One
     // list, one behaviour: a reason edited in Settings changes both at once, and
@@ -854,6 +1010,7 @@ function openEditSheet(id, draft) {
         cls: cls,
         result: res,
         failReason: reason,
+        locationId: locId,
       });
       closeSheet(); showToast('Saved'); render();
     };

@@ -1,4 +1,4 @@
-# PATGo Scan — Code Map (V3)
+# PATGo Scan — Code Map (V4)
 
 Routing only: which concern lives in which file, and the cross-file couplings
 you cannot discover by reading one file. Read this to decide *what to open*.
@@ -58,6 +58,11 @@ you cannot discover by reading one file. Read this to decide *what to open*.
 
 12. **Items carry both `locationId` and `locationCode`.** The id finds the
     record; the code is what the client reads and must not change under them.
+    ⚠ V4 — THE MOVE WRITES BOTH OR NEITHER. `updateRecordFields()` resolves the
+    id to a real location record and copies its code across; an id it cannot
+    resolve is ignored outright rather than written with the code cleared, or a
+    dangling pointer would throw away the barcode the item was scanned under.
+    An id-only move is invisible on screen and wrong in the export. Mutation M79.
     ⚠ They degrade separately: deleting a location clears the id off its items
     (rule 5) but never the code. Anything displaying a location must fall back
     to the code — `itemLocationLabel()` / `itemLocationShort()` (log.js).
@@ -152,13 +157,20 @@ has never been tested against. Rules 7 and 8 live here.
 ### log.js (~400 ln) — THE RECORD MODEL
 Two record types, the sticky location, duplicate lookup, add/replace/update/
 delete, learned descriptions, quick-pick presets, today's counts, the
-item-location labels.
+item-location labels, and (V4) `locationChoices()` for the move picker.
 **Touch to:** anything about what a record IS or how one changes.
 **Coupling:** rules 5, 11, 12. ⚠ An audit re-scan of a known location REUSES it
 rather than duplicating; an initial over a known location FILLS IT IN. Both are
 deliberate — the client's export must not carry two rows for one kitchen.
 ⚠ `replaceItemRecord()` keeps the original id and ts: a correction is one event,
-not a second one.
+not a second one. ⚠ V4 — A MOVE DOES NOT RE-STAMP EITHER, for the same reason.
+The moved row therefore keeps its place in the timestamp-ordered export and can
+sit ABOVE its new location's row; the `location_id` column is what resolves it,
+and the client's importer reads columns, not reading order. Harness 11d.
+⚠ V4 — `locationLineFor(locId, fallbackCode)` labels a location from an id that
+is not on any record yet, which is what lets the edit sheet show a location you
+have PICKED but not saved. `itemLocationLabel()` delegates to it; mutation M64
+guards the swept-item fallback that used to live inside it.
 ⚠ QUICK-PICK PRESETS ARE CURATED AND THE LEARNED DESCRIPTIONS ARE NOT. Nothing
 on the scan path writes to a preset. Fusing the two is what made a removed item
 reappear and the grid reshuffle (V1, fixed V1.1). Harness 09a/09b, mutation M51.
@@ -166,6 +178,10 @@ reappear and the grid reshuffle (V1, fixed V1.1). Harness 09a/09b, mutation M51.
 ### feedback.js (~330 ln) — toast, dialogs, sheet geometry, haptic / flash / sound
 `showToast`, `_openSheet` and the three shared dialogs, the feedback channels,
 and (V3) the visual-viewport sheet positioning plus `focusSheetField()`.
+(V4) `_syncSheetViewport()` also flags `.is-keyboard` on the backdrop when the
+visual viewport is >120px shorter than the layout one — the only signal iOS
+gives that the keyboard is up — which drops the safe-area padding that has no
+home indicator to clear. Mutations M90/M91.
 **Touch to:** change feedback, toasts, the shared dialogs, or how any sheet sits
 on the screen.
 **Coupling:** rule 9 — every yes/no in the app routes here. Rule 13 — the sheet
@@ -231,7 +247,8 @@ handlers — the integrity guard covers that case instead.
 
 ### render.js (~845 ln) — every screen, every sheet
 `setView`, `render()` and its dispatcher, the scan screen, log, settings pages,
-about, welcome, and the four sheets (new item, new location, fail reason, edit).
+about, welcome, and the five sheets (new item, new location, fail reason, edit,
+and V4's location picker).
 **Touch to:** change any screen or sheet.
 **Coupling:** rules 2, 3, 4 all bite here. ⚠ Markup carries `data-action` and
 nothing here attaches an `onclick` — a listener bound to a node innerHTML is
@@ -241,9 +258,21 @@ directly. ⚠ Suggestions commit on `pointerdown`, not `click` — a click races
 blur teardown and iOS loses the tap. ⚠ The suggestion dropdown is an OVERLAY
 (`.desc-wrap` + absolute `.suggest`) and the quick-pick grid is STATIC — nothing
 in an open sheet may change the height of anything else in it. Harness 09h–09j,
-mutations M56/M57. ⚠ `openEditSheet(id, draft)` — the second argument is how
+mutations M56/M57. ⚠ V4 PUT BOTH ON THE EDIT SHEET AS WELL (`#ed-quick`,
+`#ed-suggest`), so the two rules now have two homes each and the `pointerdown`
+one is asserted separately for each. Mutations M88/M89. ⚠ `openEditSheet(id, draft)` — the second argument is how
 unsaved edits survive the trip to the fail-reason picker, which destroys the
-sheet. `openFailSheet(onPick, onCancel)` — a caller with its own form MUST pass
+sheet. ⚠ V4 — THE DRAFT NOW CARRIES `locationId` TOO, because the edit sheet has
+a SECOND round trip (the location picker) and the two compose: pick a location,
+then tap FAIL, and the draft goes out through another sheet still holding both.
+Either round trip dropping what the other put in saves the item in the location
+it started in with nobody the wiser. Harness 11f/11h, mutations M81/M83.
+⚠ `openLocationPickerSheet()` can only ever offer locations that EXIST — that is
+the answer to "what about a location not yet scanned", not an incidental limit,
+and it is why the export can never carry an item pointing at a location row that
+is not in the file. No scanning from inside it: the scanner refuses to collect
+while a sheet is open (rule 3's neighbour, M24/M78), so scan-to-move needs a new
+armed mode in the dispatch grammar and is backlogged, not smuggled in. `openFailSheet(onPick, onCancel)` — a caller with its own form MUST pass
 `onCancel` or backing out loses that form. ⚠ No sheet here may call `.focus()`
 directly — `focusSheetField()` (feedback.js) is the only path, rule 13. Harness
 10o asserts render.js contains no bare focus call at all.

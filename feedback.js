@@ -101,6 +101,18 @@ function _syncSheetViewport() {
   // nothing while looking correct in the source.
   wrap.style.bottom = 'auto';
   wrap.style.right = 'auto';
+
+  // V4. iOS never tells you the keyboard is up; the only evidence is the visual
+  // viewport being much shorter than the layout one, which is the same
+  // discrepancy the whole fix above is built on. The threshold is deliberately
+  // well clear of the 60–100px a collapsing URL bar accounts for — a false
+  // positive here only removes a strip of padding, but a threshold small enough
+  // to trip on a scroll would have it flickering on and off under the finger.
+  let short = false;
+  try {
+    short = (typeof window.innerHeight === 'number') && (window.innerHeight - vv.height > 120);
+  } catch (e) { short = false; }
+  wrap.classList.toggle('is-keyboard', short);
 }
 
 function _bindSheetViewport() {
