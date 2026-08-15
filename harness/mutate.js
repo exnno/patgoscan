@@ -35,7 +35,7 @@ const MUTATIONS = [
     'boot.js no longer last'],
   ['M02', 'sw.js', "'./scanner.js',", '',
     'a script file missing from the SW precache'],
-  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v1'", "const CACHE_VERSION = 'pat-v71'",
+  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v1-1'", "const CACHE_VERSION = 'pat-v71'",
     'cache key using the parent app prefix'],
   ['M04', 'utils.js', '(c) 2026 Peter Birchley. All rights reserved.', '(c) 2026',
     'copyright header stripped'],
@@ -171,6 +171,41 @@ const MUTATIONS = [
   ['M50', 'bugreport.js', "return '(message withheld — it may contain client data)';",
     'return s.slice(0, 300);',
     'the scrubber failing open instead of closed'],
+
+  // --- V1.1: quick-pick presets ------------------------------------------
+  // The fusion bug itself, re-introduced: learning a description also pushes it
+  // into the grid. This is what V1 effectively did, and it is why a removed item
+  // came back and why the grid moved under the engineer.
+  ['M51', 'log.js', 'state.descriptions = existing.slice(0, DESCRIPTIONS_STORED_MAX);',
+    'state.descriptions = existing.slice(0, DESCRIPTIONS_STORED_MAX);\n  ' +
+    'if (activePreset()) activePreset().items.unshift(s);',
+    'learned descriptions leaking back into the curated grid'],
+  ['M52', 'storage.js', 'return out.length ? out : makeDefaultPresets();',
+    'return out;',
+    'a garbage preset list leaving the grid permanently empty'],
+  ['M53', 'storage.js', '  return presets.length ? presets[0].id : \'\';',
+    '  return want;',
+    'a deleted preset id staying active, so the grid resolves to nothing'],
+  ['M54', 'log.js', 'if ((state.itemPresets || []).length < 2) return false;', '',
+    'the last preset being deletable, leaving no lists at all'],
+  ['M55', 'backup.js', 'state.itemPresets = normalisePresets(obj.itemPresets);',
+    'state.itemPresets = obj.itemPresets || [];',
+    'restore bypassing the validator — a V1 backup lands on an empty grid'],
+  ['M56', 'render.js', "    desc.value = btn.getAttribute('data-d') || '';\n    hideSuggest();",
+    "    desc.value = btn.getAttribute('data-d') || '';\n    paintSuggest();",
+    'the suggestion list re-filtering under the finger instead of closing'],
+  ['M57', 'styles.css', '  position: absolute; top: 100%; left: 0; right: 0; z-index: 20;',
+    '  position: static;',
+    'the dropdown back in the flow, shoving the form down as you type'],
+  ['M58', 'render.js', "      if (res === 'fail') {\n        // V1.1: tapping FAIL raises the reason picker straight away, exactly as\n        // it does on the scan screen. In V1 this was a text box with a dropdown\n        // that nobody found, so corrections to FAIL went out with no reason.\n        askReason();\n        return;\n      }",
+    "      if (res === 'fail') { return; }",
+    'correcting to FAIL in the log no longer offering the reasons'],
+  ['M59', 'render.js', "      if (res === 'fail' && !cleanText(reason, 120)) {",
+    '      if (false) {',
+    'a fail saved out of the log with no reason on it'],
+  ['M60', 'render.js', '        (picked) => {\n          draftNow.failReason = picked;\n          openEditSheet(id, draftNow);\n        },',
+    '        (picked) => {\n          openEditSheet(id, { failReason: picked, result: \'fail\' });\n        },',
+    'the unsaved description and class thrown away on the way to the reasons'],
 ];
 
 function run(cmd) {

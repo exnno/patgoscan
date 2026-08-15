@@ -113,6 +113,33 @@ function resetApp(app) {
   st.scannerTestLog = [];
   st.failReasons = app.fn('makeDefaultFailReasons')();
   st.descriptions = app.fn('makeSeedDescriptions')();
+  // V1.1. Presets are reset from the same factory the app ships with, not from
+  // a hand-built object — a fixture that invents its own preset shape would go
+  // green against a validator that had stopped agreeing with the app.
+  st.itemPresets = app.fn('makeDefaultPresets')();
+  st.activePresetId = st.itemPresets[0].id;
 }
 
-module.exports = { burst, burstWithModifier, mkKey, nextWindow, onScanScreenWithLocation, resetApp };
+// --- V1.1 sheet helpers ----------------------------------------------------
+//
+// ⚠ THESE REACH THE SHEET THE WAY THE APP BUILT IT, through document.body. A
+// test that inspected a sheet object it had constructed itself would pass even
+// if the app never opened one.
+function openSheetEl(app) {
+  const body = app.doc.body;
+  const backdrop = body.children[body.children.length - 1];
+  return backdrop ? backdrop.children[0] : null;
+}
+
+// A stand-in for the button under the finger. `closest` on the real stub walks
+// classList, so giving it the class and the data attribute is enough for the
+// delegated handlers inside a sheet to treat it as a genuine tap target.
+function tapTarget(app, className, attrs) {
+  const { makeEl } = require('./stubs');
+  const el = makeEl('button');
+  el.classList.add(className);
+  Object.keys(attrs || {}).forEach(k => el.setAttribute(k, attrs[k]));
+  return el;
+}
+
+module.exports = { burst, burstWithModifier, mkKey, nextWindow, onScanScreenWithLocation, resetApp, openSheetEl, tapTarget };
