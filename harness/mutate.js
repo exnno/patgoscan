@@ -35,7 +35,11 @@ const MUTATIONS = [
     'boot.js no longer last'],
   ['M02', 'sw.js', "'./scanner.js',", '',
     'a script file missing from the SW precache'],
-  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v1-1'", "const CACHE_VERSION = 'pat-v71'",
+  // ⚠ THIS ONE GOES STALE EVERY RELEASE — it names the current cache key, so
+  // the version bump breaks the find string and the mutation reports SKIPPED.
+  // Update it as part of the bump; a skip here means the cache-key invariant
+  // is unguarded for that release, which is how a build ships without one.
+  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v2'", "const CACHE_VERSION = 'pat-v71'",
     'cache key using the parent app prefix'],
   ['M04', 'utils.js', '(c) 2026 Peter Birchley. All rights reserved.', '(c) 2026',
     'copyright header stripped'],
@@ -94,7 +98,7 @@ const MUTATIONS = [
     'auto-repeat from a held key accepted as a scan'],
   ['M23', 'scanner.js', 'if (SCAN_MODIFIER_KEYS[key]) return;', '',
     'a Shift mid-burst destroying a barcode with capitals'],
-  ['M24', 'scanner.js', '_scanPoisonUntil = now + SCAN_END_MS;\n    return;\n  }\n\n  // Still inside',
+  ['M24', 'scanner.js', '_scanPoisonUntil = now + scanEndMs();\n    return;\n  }\n\n  // Still inside',
     '_scanPoisonUntil = 0;\n    return;\n  }\n\n  // Still inside',
     'the tail of an interrupted burst arriving as a short, plausible scan'],
   ['M25', 'scanner.js', 'if (gap > limit) {', 'if (false) {',
@@ -206,6 +210,39 @@ const MUTATIONS = [
   ['M60', 'render.js', '        (picked) => {\n          draftNow.failReason = picked;\n          openEditSheet(id, draftNow);\n        },',
     '        (picked) => {\n          openEditSheet(id, { failReason: picked, result: \'fail\' });\n        },',
     'the unsaved description and class thrown away on the way to the reasons'],
+
+  // --- V2: the two-ceiling scanner bug ------------------------------------
+  // The release's headline invariant, attacked from both sides: the presets
+  // being reverted, and the derived window being flattened back to a constant
+  // that looks harmless and silently re-caps every preset above it.
+  ['M61', 'config.js', "const SCAN_GAP_PRESETS = { strict: 60, normal: 90, relaxed: 150 };",
+    "const SCAN_GAP_PRESETS = { strict: 40, normal: 60, relaxed: 90 };",
+    'the V1 presets back, rejecting the scanner measured in the field'],
+  ['M62', 'scanner.js', 'return Math.max(SCAN_END_FLOOR_MS, scanMaxGapMs() + SCAN_END_PAD_MS);',
+    'return SCAN_END_FLOOR_MS;',
+    'the end-of-burst window flattened back to a constant below the gap limit'],
+  ['M63', 'config.js', 'const SCAN_END_PAD_MS = 70;', 'const SCAN_END_PAD_MS = 0;',
+    'the window sitting exactly ON the gap limit instead of above it'],
+
+  // --- V2: the location on the log ---------------------------------------
+  ['M64', 'log.js', '  if (isNonEmptyString(rec.locationCode)) return rec.locationCode;',
+    '  if (false) return rec.locationCode;',
+    'a swept item losing its location entirely instead of falling back to the code'],
+  ['M65', 'render.js', "'', itemLocationShort(r)]", "'', r.locationCode]",
+    'the log row back to the bare barcode instead of the room'],
+  ['M66', 'render.js', '<span class="metarow-label">Location</span>', '',
+    'the location label gone from the item edit sheet'],
+
+  // --- V2: spacing and palette -------------------------------------------
+  ['M67', 'render.js', '<h2 class="sec">Help</h2>', '',
+    'About colliding with the sound toggle again'],
+  ['M68', 'styles.css', '.main--nonav { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }',
+    '',
+    'the phantom nav gutter rule deleted'],
+  ['M69', 'render.js', '<main class="main main--nonav">', '<main class="main">',
+    'a nav-less page reclaiming the 96px gutter it has no nav for'],
+  ['M70', 'styles.css', '  --mode-tint: #dcfce7;', '  --mode-tint: #eff6ff;',
+    'the mode tint collapsed back onto the accent wash, killing the mode signal'],
 ];
 
 function run(cmd) {

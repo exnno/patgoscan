@@ -100,6 +100,27 @@ function onScanScreenWithLocation(app, locCode) {
 }
 
 function resetApp(app) {
+  // ⚠ TEARDOWN FIRST, AND THIS LINE IS LOAD-BEARING. A sheet left open by an
+  // earlier group blocks the scanner completely — _scanTarget() bails on
+  // sheetIsOpen() before it looks at anything else — so the next group's burst
+  // silently collects nothing and its assertion fails pointing at the scanner,
+  // which is nowhere near the actual fault. V2 lost real time to exactly that:
+  // a group near the end of 05 opened a sheet and never closed it, and nothing
+  // after it happened to scan until V2 added groups that did.
+  //
+  // It belongs here rather than in the offending group because the next one to
+  // forget is the one nobody has written yet.
+  if (app.fn('sheetIsOpen')()) app.fn('closeSheet')();
+
+  // ⚠ AND THE FOCUS, FOR THE SAME REASON. render() replaces the elements in
+  // #app wholesale, so a doc.activeElement set in an earlier group points at a
+  // DETACHED node with the same id as the live one. The scanner's focus rule
+  // then sees "the cursor is in some other INPUT" — because the node identity
+  // differs even though the id matches — and bails without collecting. Null
+  // means "nothing focused", which is the honest starting state for a group
+  // that has not focused anything.
+  app.doc.activeElement = null;
+
   const st = app.state();
   st.records = [];
   st.currentLocationId = '';
