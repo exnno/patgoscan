@@ -7,13 +7,13 @@
  * read in one place — that is what makes the backup file provably complete.
  */
 
-const APP_VERSION = 'V1.1';
+const APP_VERSION = 'V2';
 
 // The welcome modal key carries the version IN THE VALUE, never in the
 // identifier. A version-named identifier caused a white screen in the parent
 // app (PATGo v61) when one file was updated and another was not.
 const WELCOME_KEY = 'scan:welcome';
-const WELCOME_VERSION = 'V1';
+const WELCOME_VERSION = 'V2';
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -56,17 +56,35 @@ const SCANNER_PAIRED_KEY = 'scan:scannerPaired'; // '1' | '0', DEFAULT OFF
 const SCAN_SPEED_KEY     = 'scan:scanSpeed';     // 'strict' | 'normal' | 'relaxed'
 
 // ---------------------------------------------------------------------------
-// Scanner tuning — carried across from PATGo v67 unchanged.
+// Scanner tuning — measured, not guessed. Do not "tidy" these.
 //
-// These numbers are not guesses any more; they came off a real NETUM C750 in
-// the field. Do not "tidy" them.
+// V2 RAISED ALL THREE PRESETS. The original numbers (40/60/90) came off a
+// NETUM C750 in 2026; the same hardware was measured again in the field at
+// 100–115ms between characters and every scan was being rejected as "too
+// slow". Whether the scanner firmware, the phone or iOS key delivery changed
+// does not matter — the app has to accept what the hardware actually sends.
+//
+// ⚠ THE PRESETS ARE NOT THE ONLY LIMIT, AND THAT WAS THE V1 BUG. Raising a
+// preset alone does nothing, because the end-of-burst window below is a
+// SECOND, independent ceiling: a gap larger than it wipes the buffer and
+// starts a new burst. With a flat 120 and a relaxed preset of 150, a 130ms
+// scanner would stop failing as "too slow" and start failing as "too short" —
+// the same rejection wearing a different hat. See scanEndMs() in scanner.js:
+// the window is now DERIVED from whichever preset is in force, so it can never
+// again sit below the limit it is supposed to be backing up.
 // ---------------------------------------------------------------------------
-const SCAN_GAP_PRESETS = { strict: 40, normal: 60, relaxed: 90 };
+const SCAN_GAP_PRESETS = { strict: 60, normal: 90, relaxed: 150 };
 const SCAN_SPEED_DEFAULT = 'normal';
 
 // How long a silence means "the burst has ended" — the fallback path for a
-// scanner configured with no suffix at all.
-const SCAN_END_MS = 120;
+// scanner configured with no suffix at all, and the width of the poison
+// window. FLOOR and PAD, not a fixed value: the real figure is computed by
+// scanEndMs() as (active gap limit + PAD), never less than FLOOR.
+//
+// ⚠ PAD must stay comfortably above the jitter between two characters of one
+// burst, or a slow scanner's own gaps would read as the end of the burst.
+const SCAN_END_FLOOR_MS = 120;
+const SCAN_END_PAD_MS = 70;
 
 // After a burst commits, a straggling terminator (a scanner set to CR+LF sends
 // two Enters) is swallowed for this long rather than acting on an empty buffer.

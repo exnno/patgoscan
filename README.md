@@ -1,85 +1,89 @@
-# PATGo Scan
+# PATGo Scan — test harness
 
-A barcode-first appliance testing log, built for one client's audit and initial
-workflow. Mobile-first, fully offline PWA.
+Not shipped. Not in `index.html`, not in the `sw.js` precache list — test 01e
+fails if either changes.
 
-**Live:** https://exnno.github.io/patgoscan/
-**Repo:** `exnno/patgoscan`
+```
+node harness/run.js       # must end "N passed, 0 failed"
+node harness/mutate.js    # must end "N caught, 0 survived, 0 aborted"
+```
 
-(c) 2026 Peter Birchley. All rights reserved. Proprietary — see `LICENSE.txt`.
+(c) 2026 Peter Birchley. All rights reserved.
 
 ---
 
-## What it does
+## What run.js covers
 
-Scan a location barcode, scan an asset barcode, tap PASS or FAIL, export one
-CSV. Two modes:
+It already does what used to be manual pre-flight steps, so running those
+separately is redundant: every file parses, the duplicate top-level declaration
+scan, load order against the service worker's ASSETS list, existence of every
+precached file, copyright headers, the banned-dialog sweep, and the storage-key
+prefix check. Then the behavioural assertions on top.
 
-- **Audit** — the asset already exists in the client's system. Result only.
-- **Initial** — a new asset. Description and class as well.
+The load order is **derived from `index.html`**, never hard-coded here. Listed
+twice, the harness could go green against an order the browser never uses.
 
-The app holds no asset register and cross-references nothing. It records what
-the engineer did; the client's own software reconciles it afterwards.
+## What mutate.js is for
 
-## Stack
+An assertion count proves nothing. A suite can be entirely green and entirely
+hollow. `mutate.js` breaks the source on purpose, one change at a time, and
+checks the suite goes red.
 
-Vanilla HTML, CSS and JavaScript. No frameworks, no build step, no external
-dependencies, no vendored libraries. 13 script files sharing one global scope,
-loading in a fixed order with `boot.js` last. `localStorage` for everything,
-stored as plain JSON. Cache-first service worker for full offline use.
+- **caught** — the assertion works.
+- **SURVIVED** — the code was broken and the suite stayed green. That assertion
+  does not test what it claims. Fix the test, not the app.
+- **aborted** — the suite crashed instead of reporting. Wrap the group.
+- **SKIPPED** — the mutation's target text is no longer in the file. The
+  mutation is stale, so the invariant is currently unguarded. Update it.
 
-Edited through the GitHub web UI, frequently from a phone. That constraint is
-why there is no build step and why there never will be.
+V1 shipped with three survivors on the first run. All three were assertions that
+had looked perfectly reasonable:
 
-## Layout
+- **M33** — group 04g tested `findItemByCode()` directly, proving the lookup
+  works and saying nothing about whether `routeScan()` ever calls it.
+- **M43** — the timestamp test asserted the time, so a mutation that swapped
+  only the date half for a UTC one stayed green.
+- **M47** — "nothing was cleared" passed either way, because with the guard
+  removed the code fell through to a confirm sheet nobody confirms headlessly.
 
-| File | Concern |
-|---|---|
-| `config.js` | Constants, storage keys, defaults, the CSV column spec |
-| `state.js` | The global `state` object |
-| `utils.js` | Pure helpers — escaping, timestamps, CSV quoting |
-| `storage.js` | Persistence boundary and the shared validators |
-| `log.js` | The record model: locations, items, the sticky location |
-| `feedback.js` | Toasts, bottom sheets, haptic/flash/sound |
-| `scanner.js` | HID barcode scanner burst detection |
-| `csv.js` | The client deliverable |
-| `backup.js` | JSON backup, restore, clear |
-| `bugreport.js` | Error capture and problem reporting |
-| `render.js` | Every screen and sheet |
-| `dispatch.js` | The scan grammar and delegated events |
-| `boot.js` | Startup, integrity guard, crash fallback — runs on load, loads last |
+That is the shape to watch for. Ask of every new assertion: **could this pass on
+broken code?**
 
-`MAP.md` is the routing document: which concern lives where, and the cross-file
-couplings you cannot find by reading one file.
+## Rules that have already cost a real bug
 
-## Testing
+- **Go through the surface the browser uses.** At least one assertion per
+  listener-based feature must dispatch through `document`, not call the handler
+  directly. PATGo shipped three releases with `initScanner()` never called
+  because two dozen groups called the handler by hand and all passed.
+- **A stub that is too thin is worse than no test.** If an element stub lacks a
+  property the app reads, the code bails out before reaching the assertion and
+  the assertion passes green having tested nothing. When the window stub was a
+  bystander object rather than the global, `bootIntegrityOK()` failed, the whole
+  boot tail was skipped, and a dozen scanner assertions "passed" on a dead app.
+- **The mock clock must only go forwards.** Any mechanism that remembers "ignore
+  input until timestamp X" reads as still-armed when a later group mocks an
+  earlier moment. Use `fixture.nextWindow()`; never pick a start time by hand.
+- **Source-shape assertions must strip comments first** (`L.stripComments`).
+  Every rule worth asserting is also explained in a comment beside the code, and
+  that comment contains the very strings the assertion greps for.
+- **A failing assertion is usually a harness defect.** Five of the first six
+  failures in this suite were the tests' fault.
+- **A real bug found mid-release goes in `known()`** — not deleted, not left red.
+  It reports as a known defect and announces itself once it starts passing.
 
+## Reaching into the app
+
+Top-level `const`/`let` do not attach to the vm global; top-level functions do.
+
+```js
+app.fn('render')        // functions, straight off the global
+app.val('APP_VERSION')  // constants, via the bridge the loader appends
+app.state()             // the live state object
+app.el('scan-input')    // a registered DOM stub
 ```
-node harness/run.js       # every assertion
-node harness/mutate.js    # breaks the source on purpose, checks the suite notices
-```
 
-`run.js` covers parsing, the duplicate top-level declaration scan, load order
-against the service worker's precache list, copyright headers and the banned
-dialog sweep, as well as the behavioural assertions. `mutate.js` is the real
-bar: an assertion nobody has tried to break is an assertion nobody knows works.
+## Adding to it
 
-Every release adds assertions **and** a matching mutation. Test files are never
-deleted — coverage compounds.
-
-## Releasing
-
-1. Bump `APP_VERSION` in `config.js`.
-2. Bump `CACHE_VERSION` in `sw.js` (`scan-vNN`). **Never skip this** — the cache
-   key is what pulls a new build onto an already-installed PWA.
-3. If script files were added or removed: update `index.html`, the `sw.js`
-   `ASSETS` list, and `REQUIRED_FNS` in `boot.js`.
-4. Upload all files first, `index.html` next, `sw.js` **last**.
-5. On the phone, fully close the app from the app switcher and reopen twice.
-
-## Relationship to PATGo
-
-PATGo (`exnno/pat-test-app`) is the general-purpose PAT testing app. PATGo Scan
-is a separate application for a single client, sharing some proven code —
-notably `scanner.js` — but no codebase and no release cycle. **The two are never
-merged.** Anything worth having in both is rebuilt by hand from a specification.
+Every release adds assertions to `tests/` **and** a matching mutation to
+`mutate.js`, and both ship with the code. Never delete a test file — prior
+coverage is never re-paid.

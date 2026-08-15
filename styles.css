@@ -17,32 +17,55 @@
 */
 
 /* @@ tokens ------------------------------------------------------------- */
+/* V2: the PATGo palette. Blue #1d7ff9 and green #17c14d are sampled straight
+   off the PATGo logo; #2563eb is PATGo's own UI accent, which is a shade
+   deeper than the logo blue because a logo colour used for body-sized text and
+   1px borders is too light to read.
+
+   ⚠ --mode-tint IS NOT --accent-soft, and the split is the point. accent-soft
+   is the blue wash that belongs to the accent; mode-tint is GREEN and marks
+   Initial mode. Collapsing them back into one token would tint the screen the
+   same colour in both modes and destroy the at-a-glance mode signal — see the
+   note at @@ mode.
+
+   ⚠ THE V1 AMBER SET, KEPT VERBATIM SO IT CAN BE PUT BACK IN ONE EDIT. It was
+   chosen so a phone carrying both PATGo and PATGo Scan could never confuse the
+   two at a glance, which V2 gives up on purpose — the icon and the header
+   title now do that job instead. If the two apps ever do get mixed up on a
+   job, this is what to restore:
+     light: accent #b45309  accent-soft #fef3c7  accent-ink #78350f
+     dark:  accent #f59e0b  accent-soft #451a03  accent-ink #fcd34d
+   and set --mode-tint back to the same value as --accent-soft. */
 :root {
-  --accent: #b45309;
-  --accent-soft: #fef3c7;
-  --accent-ink: #78350f;
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --accent-ink: #1e40af;
+  --mode-tint: #dcfce7;
+  --mode-tint-line: #86efac;
   --pass: #16a34a;
   --fail: #dc2626;
   --bg: #ffffff;
-  --bg-alt: #f5f5f4;
-  --ink: #1c1917;
-  --ink-soft: #57534e;
-  --line: #e7e5e4;
+  --bg-alt: #f4f6f8;
+  --ink: #111827;
+  --ink-soft: #6b7280;
+  --line: #e5e7eb;
   --radius: 12px;
   --tap: 48px;
 }
 
 [data-theme="dark"] {
-  --accent: #f59e0b;
-  --accent-soft: #451a03;
-  --accent-ink: #fcd34d;
+  --accent: #3b82f6;
+  --accent-soft: #17233d;
+  --accent-ink: #93c5fd;
+  --mode-tint: #0f2417;
+  --mode-tint-line: #1c5334;
   --pass: #22c55e;
   --fail: #ef4444;
-  --bg: #0c0a09;
-  --bg-alt: #1c1917;
-  --ink: #f5f5f4;
-  --ink-soft: #a8a29e;
-  --line: #292524;
+  --bg: #0b0f14;
+  --bg-alt: #161b22;
+  --ink: #f3f4f6;
+  --ink-soft: #9ca3af;
+  --line: #262c36;
 }
 
 /* @@ base --------------------------------------------------------------- */
@@ -59,7 +82,14 @@ body {
 }
 
 .screen { min-height: 100vh; display: flex; flex-direction: column; }
+
+/* The 96px bottom gutter exists ONLY to clear the sticky nav bar. The four
+   pages reached by the back arrow — Scanner, Lists, Export and backup, About —
+   have no nav, so on those it was 96px of dead space under the last control
+   with nothing to explain it. --nonav is the opt-out. ⚠ Add it to any new
+   screen that does not end in renderNav(). */
 .main { flex: 1; padding: 16px 16px 96px; }
+.main--nonav { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 h1, h2, h3 { margin: 0; font-weight: 650; }
 .sec { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
        color: var(--ink-soft); margin: 26px 0 8px; }
@@ -83,10 +113,18 @@ li { margin-bottom: 8px; }
   border: 0; background: none; color: var(--accent); cursor: pointer;
 }
 .hdr-btn.is-spacer { visibility: hidden; }
+/* The little barcode beside the title, echoing the app icon: blue bars on the
+   left half, green on the right. Two gradients, each clipped to its own half
+   by background-size + no-repeat, rather than one gradient with a colour stop
+   — a stop lands mid-bar at some widths and paints a half-and-half stripe. */
 .hdr-mark {
   width: 26px; height: 26px; border-radius: 5px;
-  background: repeating-linear-gradient(90deg,
-    var(--accent) 0 3px, transparent 3px 6px);
+  background:
+    repeating-linear-gradient(90deg, var(--accent) 0 3px, transparent 3px 6px),
+    repeating-linear-gradient(90deg, var(--pass) 0 3px, transparent 3px 6px);
+  background-size: 12px 100%, 12px 100%;
+  background-position: 0 0, 14px 0;
+  background-repeat: no-repeat, no-repeat;
 }
 
 /* @@ nav ---------------------------------------------------------------- */
@@ -115,9 +153,19 @@ li { margin-bottom: 8px; }
 }
 .mode-opt.is-on { background: var(--bg); color: var(--ink);
                   box-shadow: 0 1px 3px rgba(0,0,0,.16); }
-.mode-initial { background: var(--accent-soft); }
-.mode-initial .main { background: var(--accent-soft); }
-.mode-initial .mode-opt.is-on { background: var(--accent); color: #fff; }
+
+/* ⚠ ONE MODE TINTS, NOT BOTH, AND THE TINT IS DELIBERATELY MILD. Tinting both
+   would give two "coloured" states and no instant answer to "which mode am I
+   in?" — the whole value is that Initial is the one that looks different. V2
+   moved this from amber to green (--mode-tint) with the arrival of the PATGo
+   palette; green-100 rather than the full brand green because this colour is
+   under the engineer's eyes for a whole morning, and a saturated wash is
+   exhausting long before lunch. It still has to be unmistakable at arm's
+   length in a plant room, so do not soften it any further. */
+.mode-initial { background: var(--mode-tint); }
+.mode-initial .main { background: var(--mode-tint); }
+.mode-initial .modeswitch { background: var(--mode-tint-line); }
+.mode-initial .mode-opt.is-on { background: var(--pass); color: #fff; }
 
 /* @@ location ----------------------------------------------------------- */
 .locbar {
@@ -214,6 +262,18 @@ li { margin-bottom: 8px; }
 }
 .rowline-actions { display: flex; gap: 12px; }
 
+/* ⚠ .rowline AND .row ARE TWO DIFFERENT SHAPES AND THEY COLLIDE WHEN ADJACENT.
+   A .rowline is a flush, borderless line separated from its neighbour by a
+   hairline; a .row is a bordered card with its own margin-bottom. Put a card
+   straight after a line — which is exactly what the Settings page did with
+   About sitting under "Sound on a result" — and the card's border lands on the
+   line's border with no gap at all, so the two read as one broken control.
+   V2 gives a .row that follows a .rowline its own breathing room. The Help
+   heading added the same release is the belt to this braces; both are wanted,
+   because a heading is not guaranteed to be there next time. */
+.rowline + .row,
+.rowline + .sec { margin-top: 18px; }
+
 /* @@ forms -------------------------------------------------------------- */
 .field {
   width: 100%; min-height: var(--tap); padding: 10px 12px;
@@ -263,6 +323,20 @@ li { margin-bottom: 8px; }
   background: var(--bg); color: var(--ink); font-size: 15px; cursor: pointer;
 }
 .suggestion-item:last-child { border-bottom: none; }
+
+/* A fact on a sheet, not a control. V2 uses it for the location on the item
+   edit sheet. ⚠ It deliberately looks NOTHING like .reasonrow, which sits a
+   few lines below it and is tappable: no border, no card, no accent. An
+   engineer must be able to tell in a glance which of the two they can change,
+   and read-only things that look tappable get tapped. */
+.metarow {
+  display: flex; align-items: baseline; gap: 10px;
+  margin: 2px 0 4px; padding: 0 2px;
+}
+.metarow-label {
+  flex: none; font-size: 13px; font-weight: 600; color: var(--ink-soft);
+}
+.metarow-value { flex: 1; font-size: 15px; }
 
 /* The fail reason on the edit sheet: a value plus a way to change it, not a
    text box. Hidden outright on a pass — a passed item has no reason. */

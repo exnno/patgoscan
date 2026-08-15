@@ -247,7 +247,9 @@ function renderLogListHTML() {
         ${r.exported ? '' : '<span class="row-dot" title="Not exported"></span>'}
       </button>`;
     }
-    const bits = [r.description, r.cls ? 'Class ' + r.cls : '', r.locationCode]
+    // V2: the room, not the bare barcode. "Kitchen" tells an engineer holding
+    // the phone where they were; "L-204" makes them go and look it up.
+    const bits = [r.description, r.cls ? 'Class ' + r.cls : '', itemLocationShort(r)]
       .filter(isNonEmptyString).join(' · ');
     return `
     <button type="button" class="row row-item is-${escapeHTML(r.result || 'none')}"
@@ -298,6 +300,7 @@ function renderSettings() {
       ${renderToggle('Vibrate on a result', 'toggleHaptic', state.haptic)}
       ${renderToggle('Sound on a result', 'toggleSound', state.sound)}
 
+      <h2 class="sec">Help</h2>
       ${link('About', 'about', 'Version ' + APP_VERSION)}
       <button type="button" class="row" data-action="reportProblem">
         <span class="row-main">Report a problem</span>
@@ -323,7 +326,7 @@ function renderSettingsScanner() {
   return `
   <div class="screen">
     ${renderHeader('Barcode scanner', 'goSettings')}
-    <main class="main">
+    <main class="main main--nonav">
       ${renderToggle('Accept scans', 'toggleScanner', state.scannerEnabled)}
       ${renderToggle('Scanner always connected', 'togglePaired', state.scannerPaired)}
       <p class="muted small">Turn the second one on only when a scanner is paired to this phone. It puts the cursor in the scan box by itself so you never have to tap first — but with no scanner attached it will keep opening the on-screen keyboard.</p>
@@ -370,7 +373,7 @@ function renderSettingsLists() {
   return `
   <div class="screen">
     ${renderHeader('Lists', 'goSettings')}
-    <main class="main">
+    <main class="main main--nonav">
       <h2 class="sec">Fail reasons</h2>
       ${reasons || '<p class="muted">No fail reasons. Add one below.</p>'}
       <button type="button" class="btn btn-ghost btn-wide" data-action="addReason">Add a fail reason</button>
@@ -408,7 +411,7 @@ function renderSettingsBackup() {
   return `
   <div class="screen">
     ${renderHeader('Export and backup', 'goSettings')}
-    <main class="main">
+    <main class="main main--nonav">
       <h2 class="sec">Send to the client</h2>
       <p class="muted small">One CSV, every record in scan order. Exporting marks records as sent but does not delete anything.</p>
       <button type="button" class="btn btn-primary btn-wide" data-action="exportNew">
@@ -437,11 +440,12 @@ function renderAbout() {
   return `
   <div class="screen">
     ${renderHeader('About', 'goSettings')}
-    <main class="main">
+    <main class="main main--nonav">
       <p><b>PATGo Scan</b> — version ${escapeHTML(APP_VERSION)}</p>
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V2</b> — scanners sending characters more slowly are now accepted, which fixes scans being silently rejected. New PATGo colours and a new icon; Initial mode tints green. The log now shows which location an item was tested in, and Settings has been tidied up.</p>
       <p class="muted small"><b>V1.1</b> — Quick Pick buttons on the new item sheet, with your own lists you can edit in Settings. The description dropdown no longer moves the form around as you type. Correcting an item to FAIL in the log now asks for the reason.</p>
       <p class="muted small"><b>V1</b> — first release. Audit and initial modes, sticky locations, scan-to-log, CSV export and full backup.</p>
 
@@ -455,11 +459,19 @@ function renderWelcome() {
   <div class="screen">
     <main class="main welcome">
       <h1>PATGo Scan</h1>
-      <p>Built for barcode testing. Here is the whole app in four lines:</p>
+
+      <h2 class="sec">New in V2</h2>
+      <ul>
+        <li><b>Scans that were being missed are now accepted.</b> If your scanner had stopped working reliably, it should be right again. If it still isn't, go to Settings → Barcode scanner and move Speed to Relaxed.</li>
+        <li>The app now wears the PATGo colours, and Initial mode tints the screen green instead of amber.</li>
+        <li>Tapping an item in the log tells you which location it was tested in.</li>
+      </ul>
+
+      <h2 class="sec">The whole app in four lines</h2>
       <ul>
         <li>Tap the location bar, scan a location barcode. Everything you scan after that is recorded there.</li>
         <li><b>Audit</b> mode: scan an asset, tap PASS or FAIL. That's it.</li>
-        <li><b>Initial</b> mode: the screen turns amber, and each new asset asks for a description and class.</li>
+        <li><b>Initial</b> mode: the screen turns green, and each new asset asks for a description and class.</li>
         <li>At the end of the day, Settings → Export and backup. Send the CSV, save a backup.</li>
       </ul>
       <p class="muted small">Put your name in Settings first — it goes on every record and into the filename, which is what lets several engineers' files be merged.</p>
@@ -732,9 +744,22 @@ function openEditSheet(id, draft) {
     const curRes = (typeof d.result === 'string') ? d.result : rec.result;
     const curReason = (typeof d.failReason === 'string') ? d.failReason : rec.failReason;
 
+    // V2: read-only. Changing which location an item belongs to moves a row
+    // under a different heading in the client's CSV, so it needs its own
+    // picker and its own release — it is in the backlog. Showing it costs
+    // nothing and is what the engineer actually needed to make a correction
+    // safely: "is this the kettle in the staff room or the one upstairs?"
+    const locLine = itemLocationLabel(rec);
+
     sheet.innerHTML = `
       <h3 class="sheet-title">Item</h3>
       <p class="sheet-code">${escapeHTML(rec.code)}</p>
+      <div class="metarow">
+        <span class="metarow-label">Location</span>
+        <span class="metarow-value">${locLine
+          ? escapeHTML(locLine)
+          : '<span class="muted">Not recorded</span>'}</span>
+      </div>
       <label class="lbl" for="ed-desc">Description</label>
       <input type="text" id="ed-desc" class="field" value="${escapeHTML(curDesc)}" autocapitalize="words">
       <label class="lbl">Class</label>

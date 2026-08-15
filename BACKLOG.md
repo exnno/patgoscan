@@ -17,6 +17,16 @@ things worth considering when the client's actual working day suggests them.
   if their importer objects to them.
 - **Class III / lead.** V1 offers Class I and Class II only.
 
+## Queued from V2
+
+- **Move an item to another location.** V2 shows the location on the item edit
+  sheet but read-only. Correcting it needs a picker, and it moves a row under a
+  different heading in the client's CSV — its own release, with a think about
+  what happens to an item moved to a location that has not been scanned yet.
+- **A maskable icon variant.** The V2 icon's scan brackets fall outside the
+  maskable safe circle, so the manifest declares `purpose: "any"` only. Fine on
+  iOS, which is the whole fleet. Only worth doing if Android appears.
+
 ## Worth building if the job grows
 
 - **Merge helper.** Six engineers produce six CSVs a day. Currently merged in a

@@ -67,6 +67,43 @@ function locationLabel(loc) {
   return bits.length ? bits.join(' · ') : loc.code;
 }
 
+// Where an ITEM was tested, as one readable line. V2 — the log could show you
+// what was scanned but never where, which made a correction a guess.
+//
+// ⚠ THE TWO FIELDS DEGRADE SEPARATELY AND THAT IS DELIBERATE (rule 12). The id
+// is a pointer and can go dangling: deleting a location clears it off every
+// item under it. The CODE is a copy, is never cleared, and is what the client
+// reads. So an item whose location was deleted still knows it was L-204 even
+// though nothing can tell you which room that was any more — and showing the
+// bare code is far better than showing nothing, because the client's own
+// register can still resolve it.
+function itemLocationLabel(rec) {
+  if (!rec) return '';
+  const loc = locationRecordById(rec.locationId);
+  if (loc) {
+    const label = locationLabel(loc);
+    // locationLabel() falls back to the code when a location has no room,
+    // floor or client on it — an audit-mode location knows only its barcode.
+    // Appending the code to itself there would read "L-204 (L-204)".
+    return label === loc.code ? loc.code : label + ' (' + loc.code + ')';
+  }
+  if (isNonEmptyString(rec.locationCode)) return rec.locationCode;
+  return '';
+}
+
+// The same thing, trimmed for a list row. The full label plus the code is
+// three or four segments, and the log's sub-line already carries description,
+// class, result and time — one more long string and the row wraps to three
+// lines and stops being scannable. The room alone is what identifies a place
+// to the engineer standing in it; the code is on the sheet if they need it.
+function itemLocationShort(rec) {
+  if (!rec) return '';
+  const loc = locationRecordById(rec.locationId);
+  if (loc && isNonEmptyString(loc.room)) return loc.room;
+  if (loc) return locationLabel(loc);
+  return isNonEmptyString(rec.locationCode) ? rec.locationCode : '';
+}
+
 function itemRecords() {
   return state.records.filter(r => r.type === 'item');
 }

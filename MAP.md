@@ -1,4 +1,4 @@
-# PATGo Scan — Code Map (V1.1)
+# PATGo Scan — Code Map (V2)
 
 Routing only: which concern lives in which file, and the cross-file couplings
 you cannot discover by reading one file. Read this to decide *what to open*.
@@ -58,6 +58,14 @@ you cannot discover by reading one file. Read this to decide *what to open*.
 
 12. **Items carry both `locationId` and `locationCode`.** The id finds the
     record; the code is what the client reads and must not change under them.
+    ⚠ They degrade separately: deleting a location clears the id off its items
+    (rule 5) but never the code. Anything displaying a location must fall back
+    to the code — `itemLocationLabel()` / `itemLocationShort()` (log.js).
+
+13. **Two independent scanner ceilings, not one.** The gap preset judges a
+    burst; `scanEndMs()` decides where one burst ends and the next begins. The
+    second must always exceed the first, which is why it is derived from it and
+    not a constant. Raising a preset alone re-caps at the boundary.
 
 ---
 
@@ -89,6 +97,11 @@ Stub layer, load-order runner, fixtures, standing assertions, mutation runner.
 NOT in `index.html`, NOT in `sw.js` ASSETS — test 01e fails if either changes.
 **Touch to:** validate a release, or add this release's assertions and mutations.
 Never delete from `tests/`. See `harness/README.md`.
+⚠ `F.resetApp()` closes any open sheet and clears `doc.activeElement` FIRST.
+Both block the scanner (`_scanTarget()` bails on `sheetIsOpen()`, and on focus
+sitting in a detached node with the same id), so a group that leaks either makes
+a LATER group's burst fail for a reason nowhere near itself. Added V2 after
+exactly that.
 
 ---
 
@@ -124,9 +137,10 @@ Plain JSON. `load()`, the per-area saves, and the shared validators.
 a second set — a backup restoring under different rules produces a state the app
 has never been tested against. Rules 7 and 8 live here.
 
-### log.js (~380 ln) — THE RECORD MODEL
+### log.js (~400 ln) — THE RECORD MODEL
 Two record types, the sticky location, duplicate lookup, add/replace/update/
-delete, learned descriptions, quick-pick presets, today's counts.
+delete, learned descriptions, quick-pick presets, today's counts, the
+item-location labels.
 **Touch to:** anything about what a record IS or how one changes.
 **Coupling:** rules 5, 11, 12. ⚠ An audit re-scan of a known location REUSES it
 rather than duplicating; an initial over a known location FILLS IT IN. Both are
@@ -149,6 +163,10 @@ Carried across from PATGo v67. Burst detection, the diagnostic log, paired-mode
 focus. Burst state is module-level `let`, never `state` — it is the last ~100ms
 of keyboard.
 **Touch to:** change scan detection, timing, or where scans are accepted.
+**⚠ TIMING IS TWO NUMBERS (rule 13).** `scanMaxGapMs()` is the preset;
+`scanEndMs()` is the burst boundary, DERIVED as limit + pad. Never reintroduce a
+flat end-of-burst constant — that was the V1 bug that made the presets
+un-raisable. Harness 05r–05w, mutations M61–M63.
 **⚠ CHARACTER KEYS ARE NEVER `preventDefault`ed — ONLY THE TERMINATOR.** At the
 moment a character arrives we don't yet know if the burst is a scan. Characters
 land wherever they were going *and* are copied to the buffer; only the terminator
@@ -237,7 +255,11 @@ when `load()` threw — that is what keeps a bad release recoverable.
 
 ## Not code, but read the same way
 
-- `styles.css` (~13KB) — section index at the top; `grep -n '@@' styles.css`.
+- `styles.css` (~14KB) — section index at the top; `grep -n '@@' styles.css`.
+  Colour lives entirely in the `@@ tokens` block; V1's amber palette is kept
+  there in a comment as the one-edit route back. ⚠ `--mode-tint` is NOT
+  `--accent-soft` — collapsing them tints both modes alike and destroys the
+  mode signal. `.main--nonav` opts a nav-less screen out of the nav gutter.
   ⚠ No `100dvh + overflow:hidden` layout — it traps content behind the keyboard.
 - `index.html` — the `<script>` chain. Small enough to read whole.
 - `sw.js` — `CACHE_VERSION` + `ASSETS`. Read whole.

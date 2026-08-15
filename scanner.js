@@ -80,7 +80,7 @@ let _scannerBound = false;
 // be ported back there.
 //
 // So a drop also refuses to collect anything further until the keyboard has
-// been genuinely silent for SCAN_END_MS. A scanner never pauses that long
+// been genuinely silent for scanEndMs(). A scanner never pauses that long
 // mid-burst; a human always has by the time they type the next character.
 let _scanPoisonUntil = 0;
 
@@ -106,6 +106,20 @@ function _scanReset() {
 function scanMaxGapMs() {
   const preset = SCAN_GAP_PRESETS[state.scanSpeed];
   return typeof preset === 'number' ? preset : SCAN_GAP_PRESETS[SCAN_SPEED_DEFAULT];
+}
+
+// How long a silence means "the burst has ended". DERIVED from the active gap
+// limit, never a fixed number, and this is the V2 fix.
+//
+// ⚠ THIS VALUE MUST ALWAYS EXCEED scanMaxGapMs(). It is the boundary between
+// "still the same burst" and "a new one", so if it ever falls below the gap
+// limit, every burst the limit was widened to accept gets chopped into
+// single characters and rejected as too short instead. V1 had a flat 120
+// against a 90 preset — a 20ms margin that nobody had written down and that
+// silently capped how far the presets could ever be relaxed. Deriving it means
+// widening a preset widens this too, automatically, forever.
+function scanEndMs() {
+  return Math.max(SCAN_END_FLOOR_MS, scanMaxGapMs() + SCAN_END_PAD_MS);
 }
 
 // Judge the buffer AND say why. Returns null when there is nothing to judge at
@@ -254,7 +268,7 @@ function handleScannerKeydown(e) {
     // Refuse the REST of this transmission too — see the poison window note at
     // the top of the file. Without this, the tail of the barcode arrives as a
     // short, fast, entirely plausible scan of its own.
-    _scanPoisonUntil = now + SCAN_END_MS;
+    _scanPoisonUntil = now + scanEndMs();
     return;
   }
 
@@ -262,13 +276,13 @@ function handleScannerKeydown(e) {
   // have already decided to discard. Push the window forward and drop it. The
   // window only clears once the keyboard has actually fallen silent.
   if (now < _scanPoisonUntil) {
-    _scanPoisonUntil = now + SCAN_END_MS;
+    _scanPoisonUntil = now + scanEndMs();
     return;
   }
 
   if (_scanChars.length) {
     const gap = now - _scanLastTs;
-    if (gap > SCAN_END_MS) {
+    if (gap > scanEndMs()) {
       // Long enough that this is the start of something new, not a continuation.
       _scanChars = [];
       _scanGapMax = 0;
@@ -280,7 +294,7 @@ function handleScannerKeydown(e) {
   _scanLastTs = now;
 
   if (_scanTimer) clearTimeout(_scanTimer);
-  _scanTimer = setTimeout(_scanTimeoutCommit, SCAN_END_MS);
+  _scanTimer = setTimeout(_scanTimeoutCommit, scanEndMs());
 }
 
 // Fallback for a scanner configured with NO suffix at all: the burst simply
