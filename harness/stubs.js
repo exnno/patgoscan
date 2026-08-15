@@ -43,8 +43,26 @@ function makeEl(tag, id) {
     addEventListener(type, fn) { (this._listeners[type] = this._listeners[type] || []).push(fn); },
     removeEventListener() {},
     dispatch(type, ev) { (this._listeners[type] || []).forEach(fn => fn(ev)); },
-    appendChild(c) { this.children.push(c); c.parentNode = this; return c; },
-    removeChild(c) { this.children = this.children.filter(x => x !== c); return c; },
+    // ⚠ V3: THESE REGISTER BY id, AND THAT IS NOT TIDINESS. Before, only
+    // DOC.register() put anything in _byId, so document.getElementById() could
+    // not see a node the app had genuinely appended. sheetIsOpen() reads the
+    // backdrop by id and therefore returned false with a sheet plainly open —
+    // which meant resetApp()'s sheet teardown never fired, _closeSheet() never
+    // removed anything, and the sheet tests passed only because openSheetEl()
+    // reads the LAST child of body and each new sheet piled on top of the last.
+    // Green throughout, testing a document that could never exist in a browser.
+    appendChild(c) {
+      this.children.push(c);
+      c.parentNode = this;
+      if (c.id) DOC._byId[c.id] = c;
+      return c;
+    },
+    removeChild(c) {
+      this.children = this.children.filter(x => x !== c);
+      if (c.id && DOC._byId[c.id] === c) delete DOC._byId[c.id];
+      c.parentNode = null;
+      return c;
+    },
     // ⚠ RETURNS A STUB, NOT null. The sheet builders do
     // sheet.querySelector('#x').onclick = … immediately after setting innerHTML.
     // Returning null there throws inside the builder, the group aborts, and the
@@ -92,6 +110,24 @@ function makeEl(tag, id) {
   return el;
 }
 
+// V3. A stand-in for window.visualViewport. `keyboard(h)` shrinks it the way
+// iOS does — the LAYOUT viewport (innerHeight) is deliberately left alone,
+// because that discrepancy IS the bug the sheets have to survive.
+function makeVisualViewport() {
+  return {
+    offsetTop: 0, offsetLeft: 0, width: 390, height: 844,
+    _listeners: {},
+    addEventListener(type, fn) { (this._listeners[type] = this._listeners[type] || []).push(fn); },
+    removeEventListener(type, fn) {
+      this._listeners[type] = (this._listeners[type] || []).filter(f => f !== fn);
+    },
+    _count(type) { return (this._listeners[type] || []).length; },
+    _fire(type) { (this._listeners[type] || []).slice().forEach(fn => fn()); },
+    keyboard(h) { this.height = 844 - h; this._fire('resize'); },
+    reset() { this.offsetTop = 0; this.offsetLeft = 0; this.width = 390; this.height = 844; },
+  };
+}
+
 const DOC = {
   _byId: {},
   activeElement: null,
@@ -134,6 +170,12 @@ function makeContext() {
     console: console,
     innerWidth: 390, innerHeight: 844,
     matchMedia: () => ({ matches: false, addEventListener() {}, addListener() {} }),
+    // V3. The sheets size themselves from this, so a bystander object would let
+    // every keyboard assertion pass on a build that never read it. It records
+    // its own listeners so a test can prove the sheet re-syncs on a keyboard
+    // event rather than only on open — the failure mode being guarded is a
+    // sheet that is positioned once and then abandoned when the keyboard moves.
+    visualViewport: makeVisualViewport(),
     location: { href: '', reload() {} },
     scrollTo() {},
     AudioContext: null,

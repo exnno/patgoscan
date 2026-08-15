@@ -39,7 +39,7 @@ const MUTATIONS = [
   // the version bump breaks the find string and the mutation reports SKIPPED.
   // Update it as part of the bump; a skip here means the cache-key invariant
   // is unguarded for that release, which is how a build ships without one.
-  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v2'", "const CACHE_VERSION = 'pat-v71'",
+  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v3'", "const CACHE_VERSION = 'pat-v71'",
     'cache key using the parent app prefix'],
   ['M04', 'utils.js', '(c) 2026 Peter Birchley. All rights reserved.', '(c) 2026',
     'copyright header stripped'],
@@ -243,6 +243,35 @@ const MUTATIONS = [
     'a nav-less page reclaiming the 96px gutter it has no nav for'],
   ['M70', 'styles.css', '  --mode-tint: #dcfce7;', '  --mode-tint: #eff6ff;',
     'the mode tint collapsed back onto the accent wash, killing the mode signal'],
+
+  // --- V3: the sheet / keyboard fix --------------------------------------
+  //
+  // Attacked at each of the four places it can quietly stop working. M71 and
+  // M72 are the interesting pair: both leave a sheet that opens, positions
+  // itself once and looks entirely correct on a desk, and both put the buttons
+  // back under the keyboard on a phone.
+  ['M71', 'feedback.js', "  wrap.style.bottom = 'auto';", '',
+    'bottom left pinned by inset:0, so the height is ignored and the sheet stays full-screen'],
+  ['M72', 'feedback.js', '  vv.addEventListener(\'resize\', _sheetViewportHandler);', '',
+    'the sheet positioned once on open and then abandoned when the keyboard arrives'],
+  ['M73', 'feedback.js', '  _unbindSheetViewport();\n  const old = document.getElementById',
+    '  const old = document.getElementById',
+    'a viewport listener leaked on every sheet close'],
+  ['M74', 'feedback.js', 'el.focus({ preventScroll: true });', 'el.focus();',
+    'the document scrolling to reveal a focused field again — the original jerk'],
+  ['M75', 'render.js', 'setTimeout(() => focusSheetField(sheet.querySelector(\'#nl-room\')), 60);',
+    "setTimeout(() => { try { sheet.querySelector('#nl-room').focus(); } catch (e) {} }, 60);",
+    'the new location sheet going back to a bare focus, bypassing the shared path'],
+  ['M76', 'styles.css', 'max-height: calc(100% - 44px)', 'max-height: 88vh',
+    'the sheet measured against the screen again, overflowing off its own top'],
+  ['M77', 'styles.css', 'overscroll-behavior: contain;', '',
+    'a drag that runs out of sheet handing itself to the page underneath'],
+  // ⚠ Not a sheet mutation — it guards the STUB fix that made the rest of this
+  // block observable. Registering appended ids is what let getElementById see
+  // the backdrop; without it sheetIsOpen() reads false with a sheet open and
+  // half of 10k–10n go hollow rather than red.
+  ['M78', 'harness/stubs.js', '      if (c.id) DOC._byId[c.id] = c;', '',
+    'the harness blind to appended nodes again, exactly as it was before V3'],
 ];
 
 function run(cmd) {
