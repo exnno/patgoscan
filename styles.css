@@ -387,13 +387,26 @@ label.btn-wide { line-height: 24px; }
 /* @@ sheets ------------------------------------------------------------- */
 /* Bottom sheets are the reliable modal pattern in an iOS PWA. prompt(),
    confirm() and alert() are banned — the OS can suppress them silently. */
+/* ⚠ V3 KEYBOARD FIX — inset:0 IS THE FALLBACK, NOT THE INTENDED GEOMETRY.
+   feedback.js overwrites top/left/width/height from window.visualViewport so
+   the backdrop covers only what is visible ABOVE the on-screen keyboard. iOS
+   never shrinks the layout viewport for the keyboard, so a sheet sized from
+   here alone puts its own buttons underneath it. These values are what an
+   engine with no visualViewport falls back to, and what you see with the
+   keyboard down. See the block comment in feedback.js. */
 .sheet-backdrop {
   position: fixed; inset: 0; z-index: 9000;
   background: rgba(0,0,0,.45);
   display: flex; align-items: flex-end; justify-content: center;
 }
 .bulk-sheet {
-  width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto;
+  /* ⚠ max-height IS A PERCENTAGE OF THE BACKDROP, NOT OF THE VIEWPORT. It was
+     88vh, which with the keyboard up is taller than the space that exists —
+     the sheet then overflowed off the TOP of its own flex-end container and
+     the title went missing. The 44px keeps a strip of backdrop visible so it
+     still reads as a sheet over a screen at any height. */
+  width: 100%; max-width: 560px; max-height: calc(100% - 44px);
+  overflow-y: auto; overscroll-behavior: contain;
   padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
   border-radius: 18px 18px 0 0; background: var(--bg); color: var(--ink);
 }

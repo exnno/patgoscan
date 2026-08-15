@@ -8,14 +8,16 @@ things worth considering when the client's actual working day suggests them.
 
 ## Pending answers from the client
 
-- **Auto-detect location vs asset barcodes.** V1 uses the armed location bar
-  (decision 1D) because the app cannot tell the two apart by looking. If their
-  label convention makes them distinguishable — a prefix, a length, a number
-  range — auto-detection removes one tap per room, which over a large estate is
-  a real saving. Needs their convention in writing first.
 - **Audited locations as their own CSV rows.** Included in V1. Trivial to drop
   if their importer objects to them.
-- **Class III / lead.** V1 offers Class I and Class II only.
+
+## Under consideration
+
+- **A Visual button alongside PASS and FAIL.** For items that get a visual
+  inspection only rather than a full test. Needs deciding: what the CSV carries
+  in the result column (a third value the client's importer has to accept, or a
+  pass with a flag), and whether a visual-only item still asks for a class.
+  Raised V3 in place of the dropped Class III item.
 
 ## Queued from V2
 
@@ -53,6 +55,13 @@ things worth considering when the client's actual working day suggests them.
 
 ## Explicitly not doing
 
+- **Auto-detect location vs asset barcodes.** Dropped V3, and not for want of
+  the client's labelling convention — some barcode types are shared between
+  locations and asset ids on the same site, so the two are not distinguishable
+  by looking at the code at all. The armed location bar stays. Do not re-propose
+  this.
+- **Class III / lead as class options.** Dropped V3. See the Visual button
+  above, which is the shape of what is actually wanted.
 - **Merging PATGo Scan back into PATGo.** Two codebases by design. Anything
   worth having in both is rebuilt by hand from a spec.
 - **A local asset register.** The client's software owns the register. This app

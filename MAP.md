@@ -1,4 +1,4 @@
-# PATGo Scan — Code Map (V2)
+# PATGo Scan — Code Map (V3)
 
 Routing only: which concern lives in which file, and the cross-file couplings
 you cannot discover by reading one file. Read this to decide *what to open*.
@@ -62,7 +62,15 @@ you cannot discover by reading one file. Read this to decide *what to open*.
     (rule 5) but never the code. Anything displaying a location must fall back
     to the code — `itemLocationLabel()` / `itemLocationShort()` (log.js).
 
-13. **Two independent scanner ceilings, not one.** The gap preset judges a
+13. **⚠ SHEET GEOMETRY IS SET IN JS, NOT CSS (V3).** `inset: 0` in the
+    stylesheet is the fallback; `feedback.js` overwrites top/left/width/height
+    from `window.visualViewport` on open and on every viewport change, because
+    iOS never shrinks the layout viewport for the keyboard. Anything that
+    focuses a field inside a sheet goes through `focusSheetField()`. Editing
+    `.sheet-backdrop` or `.bulk-sheet` in CSS alone will not do what it looks
+    like it does. Harness 10k–10p, mutations M71–M77.
+
+14. **Two independent scanner ceilings, not one.** The gap preset judges a
     burst; `scanEndMs()` decides where one burst ends and the next begins. The
     second must always exceed the first, which is why it is derived from it and
     not a constant. Raising a preset alone re-caps at the boundary.
@@ -97,6 +105,10 @@ Stub layer, load-order runner, fixtures, standing assertions, mutation runner.
 NOT in `index.html`, NOT in `sw.js` ASSETS — test 01e fails if either changes.
 **Touch to:** validate a release, or add this release's assertions and mutations.
 Never delete from `tests/`. See `harness/README.md`.
+⚠ V3: `stubs.js` `appendChild`/`removeChild` register by `id`, so
+`getElementById` sees nodes the app appended. Before that, `sheetIsOpen()` read
+false with a sheet open, `_closeSheet()` removed nothing, and the sheet tests
+passed only because `openSheetEl()` reads the last child of body. Mutation M78.
 ⚠ `F.resetApp()` closes any open sheet and clears `doc.activeElement` FIRST.
 Both block the scanner (`_scanTarget()` bails on `sheetIsOpen()`, and on focus
 sitting in a detached node with the same id), so a group that leaks either makes
@@ -151,19 +163,23 @@ not a second one.
 on the scan path writes to a preset. Fusing the two is what made a removed item
 reappear and the grid reshuffle (V1, fixed V1.1). Harness 09a/09b, mutation M51.
 
-### feedback.js (~230 ln) — toast, dialogs, haptic / flash / sound
-`showToast`, `_openSheet` and the three shared dialogs, the feedback channels.
-**Touch to:** change feedback, toasts or the shared dialogs.
-**Coupling:** rule 9 — every yes/no in the app routes here. No state, no
-re-render, which is what makes these safe to call from an error handler. ⚠ iOS
-gives a PWA no programmatic haptics; that is permanent and not a bug to fix.
+### feedback.js (~330 ln) — toast, dialogs, sheet geometry, haptic / flash / sound
+`showToast`, `_openSheet` and the three shared dialogs, the feedback channels,
+and (V3) the visual-viewport sheet positioning plus `focusSheetField()`.
+**Touch to:** change feedback, toasts, the shared dialogs, or how any sheet sits
+on the screen.
+**Coupling:** rule 9 — every yes/no in the app routes here. Rule 13 — the sheet
+geometry and the focus path both live here and are used by render.js's four
+sheets. No state, no re-render, which is what makes these safe to call from an
+error handler. ⚠ iOS gives a PWA no programmatic haptics; that is permanent and
+not a bug to fix.
 
 ### scanner.js (~430 ln) — HID barcode scanner
 Carried across from PATGo v67. Burst detection, the diagnostic log, paired-mode
 focus. Burst state is module-level `let`, never `state` — it is the last ~100ms
 of keyboard.
 **Touch to:** change scan detection, timing, or where scans are accepted.
-**⚠ TIMING IS TWO NUMBERS (rule 13).** `scanMaxGapMs()` is the preset;
+**⚠ TIMING IS TWO NUMBERS (rule 14).** `scanMaxGapMs()` is the preset;
 `scanEndMs()` is the burst boundary, DERIVED as limit + pad. Never reintroduce a
 flat end-of-burst constant — that was the V1 bug that made the presets
 un-raisable. Harness 05r–05w, mutations M61–M63.
@@ -228,7 +244,9 @@ in an open sheet may change the height of anything else in it. Harness 09h–09j
 mutations M56/M57. ⚠ `openEditSheet(id, draft)` — the second argument is how
 unsaved edits survive the trip to the fail-reason picker, which destroys the
 sheet. `openFailSheet(onPick, onCancel)` — a caller with its own form MUST pass
-`onCancel` or backing out loses that form.
+`onCancel` or backing out loses that form. ⚠ No sheet here may call `.focus()`
+directly — `focusSheetField()` (feedback.js) is the only path, rule 13. Harness
+10o asserts render.js contains no bare focus call at all.
 
 ### dispatch.js (~420 ln) — the scan grammar and delegated events
 `routeScan()` — what a barcode MEANS — plus the three registries (`ACTIONS`,
@@ -261,5 +279,7 @@ when `load()` threw — that is what keeps a bad release recoverable.
   `--accent-soft` — collapsing them tints both modes alike and destroys the
   mode signal. `.main--nonav` opts a nav-less screen out of the nav gutter.
   ⚠ No `100dvh + overflow:hidden` layout — it traps content behind the keyboard.
+  ⚠ `.sheet-backdrop` / `.bulk-sheet` sizing is JS-driven — rule 13. The values
+  here are the keyboard-down fallback, not the working geometry.
 - `index.html` — the `<script>` chain. Small enough to read whole.
 - `sw.js` — `CACHE_VERSION` + `ASSETS`. Read whole.

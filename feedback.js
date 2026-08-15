@@ -42,6 +42,104 @@ function showToast(message) {
 // One builder, three wrappers. The sheet is appended to <body>, not to #app, so
 // a render() cannot tear it out from under the engineer's finger.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// V3 — THE KEYBOARD FIX. Read this before touching anything below.
+//
+// THE BUG. A sheet is position:fixed against the LAYOUT viewport, and iOS does
+// not shrink the layout viewport when the on-screen keyboard appears — it only
+// shrinks the VISUAL one. So the moment a sheet focused a field, the bottom of
+// that sheet (its buttons included) sat underneath the keyboard. iOS then tried
+// to rescue the focused field by scrolling the document, which dragged the
+// fixed overlay across the screen, and the sheet's own overflow scrolled at the
+// same time. Two scrollers and an offset overlay is what "it jumps around"
+// actually was. It hit exactly the two sheets that raise the keyboard
+// themselves — new location and type-a-barcode — and spared the new item sheet
+// only because that one deliberately does not focus when a Quick Pick grid is
+// present. Same bug, untriggered.
+//
+// THE FIX, in three parts, and all three are needed:
+//   1. The backdrop is sized to `window.visualViewport` — the area actually
+//      visible above the keyboard — and re-synced whenever that changes. The
+//      sheet then sits ON the keyboard rather than behind it.
+//   2. Every field the sheets focus goes through focusSheetField(), which
+//      passes `preventScroll`. See the note there.
+//   3. `overscroll-behavior: contain` on the sheet (styles.css) so a drag that
+//      runs out of sheet does not hand itself to the page underneath.
+//
+// ⚠ NO BODY SCROLL LOCK, DELIBERATELY. The obvious fourth part — freezing the
+// page while a sheet is open — is the same family of trick as the 100dvh +
+// overflow:hidden layout this app banned after it trapped content behind the
+// keyboard. Parts 1–3 solve it without touching the page.
+//
+// ⚠ FAILS SOFT. No visualViewport (old engine, or the harness) means the styles
+// are never written and CSS `inset: 0` stands, which is exactly the V2
+// behaviour. Nothing here may become load-bearing for a sheet OPENING.
+// ---------------------------------------------------------------------------
+
+let _sheetViewportHandler = null;
+
+function _visualViewport() {
+  try {
+    return (typeof window !== 'undefined' && window.visualViewport) ? window.visualViewport : null;
+  } catch (e) { return null; }
+}
+
+// Pins the backdrop to the visible rectangle. Called on open and on every
+// viewport change, because the keyboard can appear, resize (predictive text
+// bar, autocomplete strip) and disappear while one sheet stays open.
+function _syncSheetViewport() {
+  const wrap = document.getElementById('sheet-backdrop');
+  const vv = _visualViewport();
+  if (!wrap || !vv) return;
+  wrap.style.top = vv.offsetTop + 'px';
+  wrap.style.left = vv.offsetLeft + 'px';
+  wrap.style.width = vv.width + 'px';
+  wrap.style.height = vv.height + 'px';
+  // ⚠ `bottom` MUST be released. It is set by `inset: 0` in the stylesheet, and
+  // a fixed box with both top and bottom pinned ignores the height set here —
+  // the sheet would stay full-screen and the whole fix would silently do
+  // nothing while looking correct in the source.
+  wrap.style.bottom = 'auto';
+  wrap.style.right = 'auto';
+}
+
+function _bindSheetViewport() {
+  const vv = _visualViewport();
+  if (!vv || _sheetViewportHandler) return;
+  _sheetViewportHandler = () => { try { _syncSheetViewport(); } catch (e) {} };
+  vv.addEventListener('resize', _sheetViewportHandler);
+  vv.addEventListener('scroll', _sheetViewportHandler);
+}
+
+function _unbindSheetViewport() {
+  const vv = _visualViewport();
+  if (vv && _sheetViewportHandler) {
+    try {
+      vv.removeEventListener('resize', _sheetViewportHandler);
+      vv.removeEventListener('scroll', _sheetViewportHandler);
+    } catch (e) {}
+  }
+  _sheetViewportHandler = null;
+}
+
+// ⚠ THE ONLY WAY A SHEET MAY FOCUS A FIELD. `preventScroll` is what stops the
+// browser scrolling the document to reveal the field — the jerk that
+// focusScanInput() in scanner.js has guarded against since V1, which the sheets
+// never inherited. The fallback matters: an engine that does not understand the
+// options object ignores it silently in some versions and throws in others.
+function focusSheetField(el, andSelect) {
+  if (!el) return;
+  try {
+    el.focus({ preventScroll: true });
+    if (andSelect && typeof el.select === 'function') el.select();
+  } catch (err) {
+    try {
+      el.focus();
+      if (andSelect && typeof el.select === 'function') el.select();
+    } catch (e2) {}
+  }
+}
+
 function _openSheet(ariaLabel) {
   _closeSheet();
   const wrap = document.createElement('div');
@@ -54,10 +152,16 @@ function _openSheet(ariaLabel) {
   sheet.setAttribute('aria-label', ariaLabel || 'Dialog');
   wrap.appendChild(sheet);
   document.body.appendChild(wrap);
+  _syncSheetViewport();
+  _bindSheetViewport();
   return sheet;
 }
 
 function _closeSheet() {
+  // ⚠ Unbind FIRST and unconditionally. _openSheet() closes any previous sheet
+  // before opening, so a listener left bound here would be re-bound on the next
+  // open and accumulate one per sheet for the life of the page.
+  _unbindSheetViewport();
   const old = document.getElementById('sheet-backdrop');
   if (old && old.parentNode) old.parentNode.removeChild(old);
 }
@@ -134,7 +238,7 @@ function openNameSheet(opts) {
     // sees it (scanner.js preventDefaults on a confirmed scan), so a barcode
     // arriving in this box cannot fire the button by accident.
     input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } };
-    setTimeout(() => { try { input.focus(); input.select(); } catch (e) {} }, 60);
+    setTimeout(() => focusSheetField(input, true), 60);
   }
 }
 

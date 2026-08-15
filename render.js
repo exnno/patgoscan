@@ -445,9 +445,9 @@ function renderAbout() {
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V3</b> — the boxes that ask you to type something no longer jump about when the keyboard comes up. They now sit above the keyboard with their buttons reachable, instead of behind it.</p>
       <p class="muted small"><b>V2</b> — scanners sending characters more slowly are now accepted, which fixes scans being silently rejected. New PATGo colours and a new icon; Initial mode tints green. The log now shows which location an item was tested in, and Settings has been tidied up.</p>
       <p class="muted small"><b>V1.1</b> — Quick Pick buttons on the new item sheet, with your own lists you can edit in Settings. The description dropdown no longer moves the form around as you type. Correcting an item to FAIL in the log now asks for the reason.</p>
-      <p class="muted small"><b>V1</b> — first release. Audit and initial modes, sticky locations, scan-to-log, CSV export and full backup.</p>
 
       <p class="muted small">© 2026 Peter Birchley. All rights reserved.</p>
     </main>
@@ -460,11 +460,10 @@ function renderWelcome() {
     <main class="main welcome">
       <h1>PATGo Scan</h1>
 
-      <h2 class="sec">New in V2</h2>
+      <h2 class="sec">New in V3</h2>
       <ul>
-        <li><b>Scans that were being missed are now accepted.</b> If your scanner had stopped working reliably, it should be right again. If it still isn't, go to Settings → Barcode scanner and move Speed to Relaxed.</li>
-        <li>The app now wears the PATGo colours, and Initial mode tints the screen green instead of amber.</li>
-        <li>Tapping an item in the log tells you which location it was tested in.</li>
+        <li><b>The typing boxes have stopped jumping about.</b> When you set up a new location, or type a barcode in by thumb, the box now sits above the keyboard with its buttons where you can reach them. Before, the keyboard covered the bottom of it and the whole screen slid around as you typed.</li>
+        <li>Nothing else has changed. Your records, lists and settings are exactly as you left them.</li>
       </ul>
 
       <h2 class="sec">The whole app in four lines</h2>
@@ -601,7 +600,7 @@ function openNewItemSheet(code) {
   // With no preset items there is nothing to hide, and the keyboard up front is
   // then the fastest thing we can do.
   if (!picks.length) {
-    setTimeout(() => { try { desc.focus(); } catch (e) {} }, 60);
+    setTimeout(() => focusSheetField(desc), 60);
   }
 }
 
@@ -639,9 +638,13 @@ function openNewLocationSheet(code) {
     showToast('Location set');
     render();
   };
-  setTimeout(() => {
-    try { sheet.querySelector('#nl-room').focus(); } catch (e) {}
-  }, 60);
+  // ⚠ V3: focusSheetField, NOT a bare .focus(). Room is the third field and the
+  // furthest down the sheet, so it was the worst possible one to raise the
+  // keyboard on — see the keyboard-fix note at the top of the sheets block in
+  // feedback.js. Room stays the focused field; it is the one that is always
+  // different, and a pre-filled or unfocused room is how twenty items end up
+  // labelled with the wrong one.
+  setTimeout(() => focusSheetField(sheet.querySelector('#nl-room')), 60);
 }
 
 // Client and floor barely change through a building, so the last ones used are
