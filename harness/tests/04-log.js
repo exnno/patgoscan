@@ -134,4 +134,47 @@ module.exports = function (app) {
     st.records.forEach(r => { r.exported = true; });
     A.eq('none unexported', app.fn('unexportedCount')(), 0);
   });
+  A.group('04m an item knows where it was tested', () => {
+    // V2. The log could tell you what was scanned but never where, which made
+    // a correction a guess.
+    F.resetApp(app);
+    app.fn('addLocationRecord')('LOC-1', INITIAL,
+      { client: 'Acme Ltd', floor: 'Ground', room: 'Staff Kitchen' });
+    app.fn('addItemRecord')({ code: 'A1', mode: INITIAL }, 'pass', '');
+    const item = app.fn('itemRecords')()[0];
+    A.eq('the full label carries the room and the code',
+      app.fn('itemLocationLabel')(item), 'Staff Kitchen · Ground · Acme Ltd (LOC-1)');
+    A.eq('the short label is the room alone',
+      app.fn('itemLocationShort')(item), 'Staff Kitchen');
+  });
+
+  A.group('04n an audit location shows its code once, not twice', () => {
+    // An audit-mode location knows only its barcode, so locationLabel() falls
+    // back to the code. Appending the code to that would read "LOC-9 (LOC-9)".
+    F.resetApp(app);
+    app.fn('addLocationRecord')('LOC-9', AUDIT, null);
+    app.fn('addItemRecord')({ code: 'A1', mode: AUDIT }, 'pass', '');
+    const item = app.fn('itemRecords')()[0];
+    A.eq('code appears once', app.fn('itemLocationLabel')(item), 'LOC-9');
+  });
+
+  A.group('04o a deleted location leaves the code behind, not a blank', () => {
+    // ⚠ RULE 12, AS A TEST. Deleting a location clears locationId off every
+    // item under it (the sweep), but never locationCode — the code is a COPY
+    // and it is what the client's own register can still resolve. So the label
+    // has to degrade to the code rather than to nothing: an item that says
+    // "LOC-1" is still placeable, an item that says "" is lost.
+    F.resetApp(app);
+    const loc = app.fn('addLocationRecord')('LOC-1', INITIAL,
+      { client: 'Acme Ltd', floor: 'Ground', room: 'Staff Kitchen' });
+    app.fn('addItemRecord')({ code: 'A1', mode: INITIAL }, 'pass', '');
+    app.fn('deleteRecord')(loc.id);
+    const item = app.fn('itemRecords')()[0];
+    A.eq('the id was swept', item.locationId, '');
+    A.eq('but the code survived', item.locationCode, 'LOC-1');
+    A.eq('and the label falls back to it',
+      app.fn('itemLocationLabel')(item), 'LOC-1');
+    A.eq('as does the short form',
+      app.fn('itemLocationShort')(item), 'LOC-1');
+  });
 };

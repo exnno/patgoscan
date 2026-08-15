@@ -27,11 +27,16 @@ module.exports = function (app) {
     // The whole safety mechanism. One slow gap and the buffer is discarded.
     F.resetApp(app);
     F.onScanScreenWithLocation(app, 'LOC-1');
-    // ⚠ 100ms, not 200ms. A gap above SCAN_END_MS restarts the buffer on every
-    // character, so the burst would be rejected as "too short" — the right
-    // result reached by the wrong mechanism, which is not a test of the speed
-    // rule at all. 100ms accumulates into one burst and fails on speed alone.
-    F.burst(app, 'AST-2001', { gap: 100 });
+    // ⚠ THIS GAP HAS TO SIT BETWEEN TWO MOVING NUMBERS, and getting it wrong
+    // makes the test pass for the wrong reason rather than fail. It must be
+    // ABOVE the normal preset (V2: 90) so the burst is rejected on SPEED, and
+    // BELOW scanEndMs() (V2: 90 + 70 = 160) so the characters still accumulate
+    // into one burst — above that the buffer restarts every character and the
+    // rejection is "too short", which tests nothing about the speed rule.
+    // 130 sits mid-window. It was 100 in V1, which V2's rise to a 90 preset
+    // left with 10ms of headroom; it still passed, which is exactly why this
+    // needed catching by reading it rather than by running it.
+    F.burst(app, 'AST-2001', { gap: 130 });
     A.eq('nothing pending', st.pending, null);
     A.eq('and it was the speed rule that rejected it',
       (app.fn('_scanVerdict')() || {}).ok, undefined);
@@ -47,7 +52,9 @@ module.exports = function (app) {
       const text = 'AST-2001';
       for (let i = 0; i < text.length; i++) {
         app.doc.dispatch('keydown', F.mkKey(text.charAt(i)));
-        t += (i === 4) ? 95 : 8;    // one human-length pause
+        // One human-length pause. Same window as 05b: above the preset, below
+        // scanEndMs(). Was 95 in V1 and had 5ms of margin left after V2.
+        t += (i === 4) ? 130 : 8;
       }
       app.doc.dispatch('keydown', F.mkKey('Enter'));
     } finally { Date.now = realNow; }
@@ -230,6 +237,93 @@ module.exports = function (app) {
     A.eq('focuses when paired', app.doc.activeElement, el);
     A.eq('and selects, so a typed character replaces', el._selected, true);
     st.scannerPaired = false;
+  });
+
+  // -------------------------------------------------------------------------
+  // V2 — the two-ceiling bug. Reported from the field: a scanner sending
+  // characters 100–115ms apart had every scan silently rejected.
+  // -------------------------------------------------------------------------
+
+  A.group('05r the end-of-burst window always exceeds the gap limit', () => {
+    // THE INVARIANT, and the reason V1 could not simply have its relaxed
+    // preset raised. scanEndMs() is the boundary between "same burst" and "new
+    // burst"; if it ever drops to or below the gap limit, a burst the limit
+    // was widened to accept gets chopped into single characters and rejected
+    // as too short. V1 shipped a flat 120 against a 90 preset — 30ms of margin
+    // that nobody had written down. Asserted across EVERY preset, not just the
+    // current one, so raising any of them re-runs this check.
+    const presets = app.val('SCAN_GAP_PRESETS');
+    const names = Object.keys(presets);
+    A.eq('three presets', names.length, 3);
+    names.forEach((name) => {
+      st.scanSpeed = name;
+      const limit = app.fn('scanMaxGapMs')();
+      const end = app.fn('scanEndMs')();
+      A.eq(name + ': the limit is the preset', limit, presets[name]);
+      A.ok(name + ': the window is strictly above the limit', end > limit);
+    });
+    st.scanSpeed = app.val('SCAN_SPEED_DEFAULT');
+  });
+
+  A.group('05s an unknown preset still leaves the window above the limit', () => {
+    // The fallback path. A garbage stored value falls back to the default gap
+    // limit — and the derived window has to follow it there, not sit at a
+    // floor computed from something else.
+    st.scanSpeed = 'nonsense-value';
+    A.eq('gap falls back to the default',
+      app.fn('scanMaxGapMs')(), app.val('SCAN_GAP_PRESETS')[app.val('SCAN_SPEED_DEFAULT')]);
+    A.ok('and the window is still above it',
+      app.fn('scanEndMs')() > app.fn('scanMaxGapMs')());
+    st.scanSpeed = app.val('SCAN_SPEED_DEFAULT');
+  });
+
+  A.group('05t the field scanner is accepted on relaxed', () => {
+    // THE ACTUAL BUG, as a test. 115ms is the top of the range measured in the
+    // field. On V1's relaxed preset of 90 this was rejected as too slow; on
+    // relaxed-150 it must land as a real scan, and it must reach `pending` —
+    // not merely pass _scanVerdict, which would prove the judgement and not
+    // the delivery.
+    F.resetApp(app);
+    st.scanSpeed = 'relaxed';
+    F.onScanScreenWithLocation(app, 'LOC-1');
+    F.burst(app, 'AST-2001', { gap: 115 });
+    A.eq('the slow scan arrived', st.pending && st.pending.code, 'AST-2001');
+    st.scanSpeed = app.val('SCAN_SPEED_DEFAULT');
+  });
+
+  A.group('05u relaxed still is not a free pass', () => {
+    // Relaxing must not turn the speed rule off. 400ms between characters is
+    // unambiguously a thumb, and has to stay rejected even at the loosest
+    // setting — otherwise V2 has fixed a scanner by breaking the mechanism
+    // that stops typing being logged as a scan.
+    F.resetApp(app);
+    st.scanSpeed = 'relaxed';
+    F.onScanScreenWithLocation(app, 'LOC-1');
+    F.burst(app, 'AST-2001', { gap: 400 });
+    A.eq('nothing pending', st.pending, null);
+    st.scanSpeed = app.val('SCAN_SPEED_DEFAULT');
+  });
+
+  A.group('05v the presets still discriminate', () => {
+    // Three settings that behave identically are one setting with a confusing
+    // UI. The same 115ms burst that relaxed accepts must be refused by strict.
+    F.resetApp(app);
+    st.scanSpeed = 'strict';
+    F.onScanScreenWithLocation(app, 'LOC-1');
+    F.burst(app, 'AST-2001', { gap: 115 });
+    A.eq('strict refuses what relaxed took', st.pending, null);
+    st.scanSpeed = app.val('SCAN_SPEED_DEFAULT');
+  });
+
+  A.group('05w no fixed end-of-burst constant survives — source guard', () => {
+    // The behavioural tests above would all still pass if someone reintroduced
+    // a flat constant that happened to be large enough today. The point of V2
+    // is that the window is DERIVED, so assert the shape too.
+    const src = L.stripComments(L.readFile('scanner.js'));
+    A.ok('scanner.js no longer references a flat SCAN_END_MS',
+      src.indexOf('SCAN_END_MS') === -1);
+    A.ok('and the timer is scheduled from the derived value',
+      src.indexOf('setTimeout(_scanTimeoutCommit, scanEndMs())') !== -1);
   });
 
   A.group('05q character keys are never preventDefaulted — source guard', () => {
