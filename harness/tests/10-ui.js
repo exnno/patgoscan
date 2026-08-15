@@ -180,15 +180,131 @@ module.exports = function (app) {
 
   A.group('10j the release strings all agree', () => {
     const css = L.readFile('styles.css');
-    A.eq('the app version is V2', app.val('APP_VERSION'), 'V2');
-    A.eq('the welcome rolled with it', app.val('WELCOME_VERSION'), 'V2');
-    A.eq('the cache key matches', L.cacheVersion(), 'scan-v2');
-    A.ok('About leads with V2',
-      app.fn('renderAbout')().indexOf('<b>V2</b>') !== -1);
-    A.ok('and still lists three versions, oldest last',
-      app.fn('renderAbout')().indexOf('<b>V1</b>') !== -1);
+    A.eq('the app version is V3', app.val('APP_VERSION'), 'V3');
+    A.eq('the welcome rolled with it', app.val('WELCOME_VERSION'), 'V3');
+    A.eq('the cache key matches', L.cacheVersion(), 'scan-v3');
+    A.ok('About leads with V3',
+      app.fn('renderAbout')().indexOf('<b>V3</b>') !== -1);
+    // Rolling three: V3, V2, V1.1. ⚠ V1 must have DROPPED OFF — asserting only
+    // that the oldest is present would stay green on a changelog that had
+    // simply grown a fourth entry and never dropped anything.
+    A.ok('and still lists three, oldest V1.1',
+      app.fn('renderAbout')().indexOf('<b>V1.1</b>') !== -1);
+    A.ok('with V1 dropped off the bottom',
+      app.fn('renderAbout')().indexOf('<b>V1</b>') === -1);
     // The amber set is kept in the stylesheet on purpose — it is the one-edit
     // route back if the two apps ever do get confused on a job.
     A.ok('the V1 amber palette is still recorded', css.indexOf('#b45309') !== -1);
+  });
+
+  // --- V3: the sheet / keyboard fix ---------------------------------------
+  //
+  // The bug these guard: a sheet is fixed to the LAYOUT viewport, which iOS
+  // does not shrink for the keyboard, so a sheet that focused a field put its
+  // own buttons underneath the keyboard and the page slid about trying to
+  // reveal the field. The stub keeps innerHeight at 844 while visualViewport
+  // shrinks, because that discrepancy IS the bug — a stub that shrank both
+  // would let a sheet sized from innerHeight pass.
+
+  const vv = app.ctx.visualViewport;
+
+  A.group('10k a sheet is sized from the visual viewport, not the screen', () => {
+    F.resetApp(app);
+    vv.reset();
+    app.fn('openConfirmSheet')({ title: 'Anything' });
+    const wrap = app.doc.getElementById('sheet-backdrop');
+    A.ok('the backdrop is findable by id', !!wrap);
+    A.eq('it is as tall as the visible area', wrap.style.height, '844px');
+    A.eq('and starts at its top', wrap.style.top, '0px');
+    // ⚠ THE LOAD-BEARING ONE. inset:0 in the stylesheet pins both top and
+    // bottom, and a fixed box pinned both ways ignores height entirely. Leave
+    // bottom set and every other assertion here still passes while the sheet
+    // stays full-screen and the fix does nothing at all.
+    A.eq('with bottom released so height can win', wrap.style.bottom, 'auto');
+    app.fn('closeSheet')();
+  });
+
+  A.group('10l the sheet follows the keyboard up', () => {
+    F.resetApp(app);
+    vv.reset();
+    app.fn('openConfirmSheet')({ title: 'Anything' });
+    const wrap = app.doc.getElementById('sheet-backdrop');
+    // Fired through the viewport's own listeners — the surface the browser
+    // uses — not by calling the sync function directly. A sync that was never
+    // wired to a listener passes every direct call and nothing in a browser.
+    vv.keyboard(336);
+    A.eq('the backdrop shrank with it', wrap.style.height, '508px');
+    A.eq('while the layout viewport did not move', app.ctx.innerHeight, 844);
+    vv.keyboard(0);
+    A.eq('and grows back when the keyboard goes', wrap.style.height, '844px');
+    app.fn('closeSheet')();
+  });
+
+  A.group('10m the viewport listener does not leak', () => {
+    F.resetApp(app);
+    vv.reset();
+    app.fn('openConfirmSheet')({ title: 'One' });
+    A.eq('one resize listener while open', vv._count('resize'), 1);
+    // _openSheet closes any previous sheet first, so an unbind that only ran on
+    // an explicit close would accumulate one listener per sheet for the life of
+    // the page — and every one of them would keep firing.
+    app.fn('openConfirmSheet')({ title: 'Two' });
+    A.eq('still one after reopening over it', vv._count('resize'), 1);
+    A.eq('and one scroll listener', vv._count('scroll'), 1);
+    app.fn('closeSheet')();
+    A.eq('none once closed', vv._count('resize'), 0);
+    A.eq('none once closed, scroll too', vv._count('scroll'), 0);
+  });
+
+  A.group('10n an open sheet is visible to sheetIsOpen', () => {
+    // Newly observable in V3: until the stub registered appended ids,
+    // getElementById could not see the backdrop and this returned false with a
+    // sheet plainly open. It matters beyond the sheets — the scanner refuses to
+    // collect a burst while one is open, and that refusal was untested.
+    F.resetApp(app);
+    A.ok('nothing open to start', !app.fn('sheetIsOpen')());
+    app.fn('openConfirmSheet')({ title: 'Anything' });
+    A.ok('open once a sheet is built', app.fn('sheetIsOpen')());
+    app.fn('closeSheet')();
+    A.ok('closed once it is dismissed', !app.fn('sheetIsOpen')());
+    A.ok('and the backdrop is gone from the document',
+      app.doc.getElementById('sheet-backdrop') === null);
+  });
+
+  A.group('10o every sheet field is focused through focusSheetField', () => {
+    // ⚠ SOURCE GUARDS, AND THEY SAY SO. The focus calls sit inside setTimeout
+    // and the harness clock never fires, so there is no honest way to observe
+    // the focus itself here. What can be proven is that no sheet builder has
+    // grown a bare .focus() back, and that the one shared path still passes
+    // preventScroll — the thing that stops the browser scrolling the document
+    // to reveal the field.
+    const fb = L.stripComments(L.readFile('feedback.js'));
+    const rn = L.stripComments(L.readFile('render.js'));
+    A.ok('focusSheetField exists', fb.indexOf('function focusSheetField') !== -1);
+    A.ok('and it asks for preventScroll', fb.indexOf('preventScroll: true') !== -1);
+    A.ok('with a fallback for engines that reject the options object',
+      fb.split('.focus(').length - 1 >= 2);
+    A.ok('render.js focuses nothing directly', rn.indexOf('.focus(') === -1);
+    A.eq('both of its sheet fields go through the helper',
+      rn.split('focusSheetField(').length - 1, 2);
+    A.ok('and so does the name sheet', fb.indexOf('focusSheetField(input') !== -1);
+  });
+
+  A.group('10p the stylesheet lets a sheet fit above a keyboard', () => {
+    // ⚠ STRIPPED, and 10g above is not — the difference is that this group
+    // asserts a string is ABSENT. The comment explaining why 88vh had to go
+    // says "88vh", so the unstripped file fails its own test. Presence
+    // assertions never hit this; absence assertions always do.
+    const css = L.stripComments(L.readFile('styles.css'));
+    // ⚠ 88vh is a fraction of the SCREEN. With the keyboard up that is taller
+    // than the space that exists, and the sheet overflows off the top of its
+    // own flex-end container — the title disappears. Its absence is the
+    // assertion; a percentage of the backdrop is the replacement.
+    A.ok('the sheet is no longer measured against the screen',
+      css.indexOf('88vh') === -1);
+    A.ok('it is measured against the backdrop instead',
+      css.indexOf('max-height: calc(100% - 44px)') !== -1);
+    A.ok('and a drag inside it cannot reach the page',
+      css.indexOf('overscroll-behavior: contain') !== -1);
   });
 };
