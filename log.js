@@ -247,7 +247,90 @@ function deleteRecord(id) {
 }
 
 // ---------------------------------------------------------------------------
+// Quick-pick presets (V1.1)
+//
+// ⚠ CURATED, NEVER LEARNED INTO. Nothing in this section is called from the
+// scan path — logging an item does not touch a preset. That is the invariant
+// that makes a removed item stay removed, and it is the whole reason presets
+// and learned descriptions are two lists rather than one.
+//
+// ⚠ SWITCHING A PRESET CHANGES WHICH BUTTONS SHOW AND NOTHING ELSE. It never
+// alters a record, never re-labels history, and is not stamped onto anything —
+// so an engineer can switch mid-job with no consequence to the day's work.
+// ---------------------------------------------------------------------------
+function activePreset() {
+  const list = state.itemPresets || [];
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].id === state.activePresetId) return list[i];
+  }
+  return list.length ? list[0] : null;
+}
+
+function quickPickItems() {
+  const p = activePreset();
+  return (p && Array.isArray(p.items)) ? p.items : [];
+}
+
+function setActivePreset(id) {
+  const p = (state.itemPresets || []).filter(x => x.id === id)[0];
+  if (!p) return false;
+  state.activePresetId = id;
+  saveLists();
+  return true;
+}
+
+function addPreset(name) {
+  const n = cleanText(name, PRESET_NAME_MAX);
+  if (!n) return null;
+  // A new preset starts EMPTY rather than copying the current one. Copying
+  // would be a silent duplicate that looks identical in the switcher, and the
+  // engineer would have to work out which of two identical lists they are on.
+  const p = { id: uid('preset'), name: n, items: [] };
+  state.itemPresets.push(p);
+  state.activePresetId = p.id;
+  saveLists();
+  return p;
+}
+
+function renamePreset(id, name) {
+  const n = cleanText(name, PRESET_NAME_MAX);
+  const p = (state.itemPresets || []).filter(x => x.id === id)[0];
+  if (!p || !n) return false;
+  p.name = n;
+  saveLists();
+  return true;
+}
+
+// ⚠ THE LAST PRESET CANNOT BE DELETED. See normalisePresets() — the app is
+// never in a state with no presets, so the grid can never be permanently empty.
+function deletePreset(id) {
+  if ((state.itemPresets || []).length < 2) return false;
+  const before = state.itemPresets.length;
+  state.itemPresets = state.itemPresets.filter(p => p.id !== id);
+  if (state.itemPresets.length === before) return false;
+  if (state.activePresetId === id) state.activePresetId = state.itemPresets[0].id;
+  saveLists();
+  return true;
+}
+
+// Takes the raw textarea text — one item per line, as typed. Blank lines and
+// duplicates fall out; the order is the order they were typed in, because that
+// order is muscle memory once the grid has been used for a week.
+function setPresetItemsFromText(id, text) {
+  const p = (state.itemPresets || []).filter(x => x.id === id)[0];
+  if (!p) return false;
+  const lines = String(text == null ? '' : text).split('\n');
+  p.items = normaliseStringList(lines, () => [], QUICK_PICK_MAX);
+  saveLists();
+  return true;
+}
+
+// ---------------------------------------------------------------------------
 // Learned descriptions (decision 5A)
+//
+// Separate from the presets above, and deliberately so: this list is built from
+// what the engineer actually types and is only ever shown as the dropdown under
+// the description box.
 // ---------------------------------------------------------------------------
 function learnDescription(desc) {
   const s = cleanText(desc, 80);
