@@ -7,7 +7,7 @@
 // every engineer on the old version, served from cache, with no way to tell.
 //
 // ⚠ The prefix is 'scan-', not 'pat-'. Different lineage from PATGo entirely.
-const CACHE_VERSION = 'scan-v3';
+const CACHE_VERSION = 'scan-v4';
 const ASSETS = [
   './',
   './index.html',
