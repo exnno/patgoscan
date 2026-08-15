@@ -228,11 +228,53 @@ li { margin-bottom: 8px; }
 .hidden-file { position: absolute; width: 1px; height: 1px;
                opacity: 0; pointer-events: none; }
 
-.suggest { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.suggestion-item {
-  padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px;
-  background: var(--bg-alt); color: var(--ink); font-size: 15px; cursor: pointer;
+/* V1.1 QUICK PICK. Three across, up to nine — the most that sits above a phone
+   keyboard without scrolling. The grid is static: tapping only toggles .is-on,
+   it is never rebuilt or reordered while the sheet is open. */
+.quick-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; margin: 4px 0 10px;
 }
+.quick-btn {
+  padding: 14px 4px; min-height: var(--tap);
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg-alt); color: var(--ink);
+  font-size: 14px; font-weight: 600; line-height: 1.2; cursor: pointer;
+}
+.quick-btn.is-on { border-color: var(--accent); background: var(--accent); color: #fff; }
+
+/* ⚠ THE DROPDOWN IS AN OVERLAY, AND THAT IS THE WHOLE POINT. In V1 this was an
+   in-flow row of chips, so every keystroke changed its height and shoved the
+   Class buttons and Continue down the screen — the "form rebuilding over and
+   over" that V1.1 fixes. Absolutely positioned, it floats over what is below and
+   showing or hiding it moves nothing at all. .desc-wrap is its containing block;
+   without position:relative there, it would anchor to the viewport. */
+.desc-wrap { position: relative; }
+.suggest {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 20;
+  max-height: 190px; overflow-y: auto;
+  background: var(--bg); border: 1px solid var(--line); border-top: none;
+  border-radius: 0 0 10px 10px; box-shadow: 0 6px 16px rgba(0,0,0,.18);
+}
+.suggest.is-hidden { display: none; }
+.suggestion-item {
+  display: block; width: 100%; text-align: left;
+  padding: 12px 14px; border: 0; border-bottom: 1px solid var(--line);
+  background: var(--bg); color: var(--ink); font-size: 15px; cursor: pointer;
+}
+.suggestion-item:last-child { border-bottom: none; }
+
+/* The fail reason on the edit sheet: a value plus a way to change it, not a
+   text box. Hidden outright on a pass — a passed item has no reason. */
+.reasonrow {
+  display: flex; align-items: center; gap: 10px;
+  margin-top: 14px; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--bg-alt);
+}
+.reasonrow.is-hidden { display: none; }
+.reasonrow-label { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.reasonrow-value { flex: 1; font-size: 16px; }
+.qp-items { min-height: 200px; font-family: inherit; line-height: 1.6; }
 
 .classpick { display: flex; gap: 8px; }
 .class-opt {

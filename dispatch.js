@@ -221,6 +221,80 @@ const ACTIONS = {
     });
   },
 
+  // --- Quick Pick presets (V1.1) ------------------------------------------
+  // ⚠ These read the textarea out of the DOM at the moment of the tap rather
+  // than tracking it on every keystroke. An input action that re-rendered would
+  // rebuild the box and take the cursor with it — the rule that the log search
+  // field exists to demonstrate.
+  saveQuickPicks: () => {
+    const p = activePreset();
+    const el = document.getElementById('qp-items');
+    if (!p || !el) return;
+    setPresetItemsFromText(p.id, el.value);
+    showToast('Quick Pick saved');
+    render();
+  },
+
+  resetQuickPicks: () => {
+    openConfirmSheet({
+      title: 'Reset Quick Pick?',
+      body: 'Replaces every list with the one starter list. Your typed descriptions and fail reasons are not touched.',
+      confirmLabel: 'Reset', danger: true,
+      onConfirm: () => {
+        state.itemPresets = makeDefaultPresets();
+        state.activePresetId = state.itemPresets[0].id;
+        saveLists();
+        showToast('Reset');
+        render();
+      },
+      onCancel: () => render(),
+    });
+  },
+
+  addPreset: () => {
+    openNameSheet({
+      title: 'New Quick Pick list',
+      body: 'Name it for where you use it — Workshop, Offices, Kitchens.',
+      placeholder: 'e.g. Workshop',
+      confirmLabel: 'Create',
+      onConfirm: (v) => {
+        const p = addPreset(v);
+        if (p) showToast('Created — now add its items');
+        render();
+      },
+      onCancel: () => render(),
+    });
+  },
+
+  renamePreset: () => {
+    const p = activePreset();
+    if (!p) return;
+    openNameSheet({
+      title: 'Rename list',
+      value: p.name,
+      onConfirm: (v) => {
+        renamePreset(p.id, v);
+        render();
+      },
+      onCancel: () => render(),
+    });
+  },
+
+  deletePreset: () => {
+    const p = activePreset();
+    if (!p) return;
+    openConfirmSheet({
+      title: 'Delete "' + p.name + '"?',
+      body: 'Only the list of buttons goes. Nothing you have already tested changes.',
+      confirmLabel: 'Delete', danger: true,
+      onConfirm: () => {
+        if (!deletePreset(p.id)) showToast('That is your only list — it has to stay');
+        render();
+      },
+      onCancel: () => render(),
+    });
+  },
+
   resetDescriptions: () => {
     openConfirmSheet({
       title: 'Reset descriptions?',
@@ -267,6 +341,11 @@ const CHANGE_ACTIONS = {
     savePrefs();
     applyTheme();
     render();
+  },
+  // Switching is global and immediate — it changes which buttons show and
+  // nothing else. It can never alter a record, so there is nothing to confirm.
+  switchPreset: (el) => {
+    if (setActivePreset(el.value)) render();
   },
   setScanSpeed: (el) => {
     state.scanSpeed = normaliseScanSpeed(el.value);

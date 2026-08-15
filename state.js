@@ -26,7 +26,15 @@ let state = {
   currentLocationId: '',     // id of the location record now in force
 
   failReasons: [],
-  descriptions: [],
+  descriptions: [],           // LEARNED, feeds the dropdown only
+
+  // V1.1: the quick-pick grid. Curated, never learned into — see config.js.
+  // itemPresets: [{ id, name, items: [up to 9 strings] }]
+  // activePresetId: the one whose items the grid shows. Switching is global and
+  // immediate; it changes which buttons appear and nothing else, and it can
+  // never change what a tap logs.
+  itemPresets: [],
+  activePresetId: '',
 
   // --- Preferences ----------------------------------------------------------
   theme: 'auto',

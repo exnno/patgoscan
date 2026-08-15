@@ -117,6 +117,48 @@ function normaliseStringList(arr, fallbackFn, max) {
   return out.length ? out : fallbackFn();
 }
 
+// V1.1: the quick-pick presets. Same contract as every validator here — garbage
+// collapses to a safe default and NEVER throws, because this runs on load and on
+// restore, and a throw either way is a blank app holding a day's work.
+//
+// ⚠ IT ALWAYS RETURNS AT LEAST ONE PRESET. An empty list would render an empty
+// grid with no route back to a full one except the Settings reset, which is a
+// dead end an engineer would meet mid-job.
+function normalisePresets(arr) {
+  if (!Array.isArray(arr)) return makeDefaultPresets();
+  const out = [];
+  const seenId = {};
+  for (let i = 0; i < arr.length; i++) {
+    const p = arr[i];
+    if (!p || typeof p !== 'object') continue;
+    const name = cleanText(p.name, PRESET_NAME_MAX);
+    if (!name) continue;
+    // A preset with no items is legal — a half-built one on the way to being
+    // filled in is not corruption, and refusing it would delete the engineer's
+    // work in front of them.
+    const items = Array.isArray(p.items)
+      ? normaliseStringList(p.items, () => [], QUICK_PICK_MAX)
+      : [];
+    let id = cleanText(p.id, 60);
+    if (!id || seenId[id]) id = uid('preset');
+    seenId[id] = 1;
+    out.push({ id: id, name: name, items: items });
+    if (out.length >= 20) break;
+  }
+  return out.length ? out : makeDefaultPresets();
+}
+
+// The active id is only ever meaningful against a preset that exists. A stale id
+// — from a deleted preset, or an older backup — resolves to the first preset
+// rather than to nothing, so the grid is never mysteriously empty.
+function resolveActivePreset(id, presets) {
+  const want = cleanText(id, 60);
+  for (let i = 0; i < presets.length; i++) {
+    if (presets[i].id === want) return want;
+  }
+  return presets.length ? presets[0].id : '';
+}
+
 function normaliseTheme(v) {
   return (v === 'light' || v === 'dark' || v === 'auto') ? v : 'auto';
 }
@@ -140,6 +182,13 @@ function load() {
     _parseJSON(_lsGet(FAIL_REASONS_KEY), null), makeDefaultFailReasons, 40);
   state.descriptions = normaliseStringList(
     _parseJSON(_lsGet(DESCRIPTIONS_KEY), null), makeSeedDescriptions, DESCRIPTIONS_STORED_MAX);
+
+  // V1.1. An upgrading phone has no presets key at all, so it gets the default
+  // preset — NOT its learned descriptions promoted into the grid. Promoting them
+  // would hand the engineer a nine-button grid built out of whatever they had
+  // typed most recently, which is exactly the reshuffling mess V1.1 removes.
+  state.itemPresets = normalisePresets(_parseJSON(_lsGet(QUICK_PICKS_KEY), null));
+  state.activePresetId = resolveActivePreset(_lsGet(ACTIVE_PRESET_KEY), state.itemPresets);
 
   state.theme = normaliseTheme(_lsGet(THEME_KEY));
   state.haptic = _lsGet(HAPTIC_KEY) !== '0';          // DEFAULT ON
@@ -181,6 +230,8 @@ function savePrefs() {
 function saveLists() {
   _lsSet(FAIL_REASONS_KEY, JSON.stringify(state.failReasons));
   _lsSet(DESCRIPTIONS_KEY, JSON.stringify(state.descriptions));
+  _lsSet(QUICK_PICKS_KEY, JSON.stringify(state.itemPresets));
+  _lsSet(ACTIVE_PRESET_KEY, state.activePresetId || '');
 }
 
 // The whole-state write. Used by restore and by anything that has touched more

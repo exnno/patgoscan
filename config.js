@@ -7,7 +7,7 @@
  * read in one place — that is what makes the backup file provably complete.
  */
 
-const APP_VERSION = 'V1';
+const APP_VERSION = 'V1.1';
 
 // The welcome modal key carries the version IN THE VALUE, never in the
 // identifier. A version-named identifier caused a white screen in the parent
@@ -29,6 +29,19 @@ const MODE_KEY           = 'scan:mode';          // 'audit' | 'initial'
 const LOCATION_KEY       = 'scan:location';      // the current location record id
 const FAIL_REASONS_KEY   = 'scan:failReasons';
 const DESCRIPTIONS_KEY   = 'scan:descriptions';  // learned item descriptions
+
+// V1.1: quick-pick presets. ⚠ THESE ARE NOT THE LEARNED DESCRIPTIONS, and the
+// distinction is the whole point of the V1.1 fix. Two lists doing two jobs:
+//   QUICK_PICKS_KEY   — a HAND-CURATED list of named presets, each holding up
+//                       to nine item types, shown as the tap grid. The engineer
+//                       owns it; nothing is ever added to it automatically, so
+//                       something removed here stays removed.
+//   DESCRIPTIONS_KEY  — LEARNED from what gets typed, and only ever surfaced as
+//                       the dropdown under the description box.
+// V1 fused the two, which is why a description deleted from the list reappeared
+// the next time it was typed, and why the grid reshuffled as you used it.
+const QUICK_PICKS_KEY    = 'scan:quickPicks';    // JSON [{id,name,items:[…]}]
+const ACTIVE_PRESET_KEY  = 'scan:activePreset';  // id of the preset in force
 const THEME_KEY          = 'scan:theme';         // 'light' | 'dark' | 'auto'
 const HAPTIC_KEY         = 'scan:haptic';        // '1' | '0', DEFAULT ON
 const SOUND_KEY          = 'scan:sound';         // '1' | '0', DEFAULT OFF
@@ -84,9 +97,32 @@ const CLASS_OPTIONS = ['I', 'II'];
 const MODE_AUDIT = 'audit';
 const MODE_INITIAL = 'initial';
 
-// Item descriptions are learned as they are typed rather than maintained as a
-// list. These seed the suggestions on a brand new phone so the first day is not
-// all typing; anything the engineer types is added to them.
+// The quick-pick grid: up to nine per preset, three across, in the order the
+// engineer put them in. NINE IS A UI LIMIT, NOT AN ARBITRARY ONE — it is the
+// most that fits above the keyboard on a phone without the grid scrolling, and
+// a grid you have to scroll is slower than typing.
+const QUICK_PICK_MAX = 9;
+const PRESET_NAME_MAX = 40;
+
+// One preset to start with. A preset is never deleted down to none: the app
+// always has at least one, because an empty preset list means an empty grid and
+// no way back to a full one without going through Settings.
+function makeDefaultPresets() {
+  return [{
+    id: 'preset_default',
+    name: 'Default',
+    items: [
+      'Kettle', 'Microwave', 'Toaster',
+      'Fridge', 'Monitor', 'Laptop Charger',
+      'Desk Lamp', 'Printer', 'Extension Lead',
+    ],
+  }];
+}
+
+// Item descriptions are LEARNED as they are typed. These seed the dropdown on a
+// brand new phone so the first day is not all typing; anything the engineer
+// types is added to them. This list is not the quick-pick grid — see the note
+// on QUICK_PICKS_KEY above.
 function makeSeedDescriptions() {
   return [
     'Kettle', 'Microwave', 'Toaster', 'Fridge', 'Water Cooler',

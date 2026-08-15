@@ -1,4 +1,4 @@
-# PATGo Scan — Code Map (V1)
+# PATGo Scan — Code Map (V1.1)
 
 Routing only: which concern lives in which file, and the cross-file couplings
 you cannot discover by reading one file. Read this to decide *what to open*.
@@ -94,9 +94,10 @@ Never delete from `tests/`. See `harness/README.md`.
 
 ## Files
 
-### config.js (~130 ln) — constants and defaults, pure data
+### config.js (~160 ln) — constants and defaults, pure data
 Every `scan:*` storage key, `APP_VERSION`, `WELCOME_VERSION`, scanner tuning,
-`CSV_COLUMNS`, `makeDefaultFailReasons()`, `makeSeedDescriptions()`.
+`CSV_COLUMNS`, `makeDefaultFailReasons()`, `makeSeedDescriptions()`,
+`makeDefaultPresets()`, `QUICK_PICK_MAX`.
 **Touch to:** add a storage key, change a default, bump the version, roll a
 welcome, change the CSV spec.
 **Coupling:** rules 7, 8 and 12 originate here. `CSV_COLUMNS` is the client's
@@ -115,7 +116,7 @@ Escaping, ids, local timestamps, title-casing, CSV cell quoting, sorting.
 editable and will eventually contain a comma. ⚠ `stampLocal()` is deliberately
 not `toISOString()`; UTC would export an 08:15 scan as 07:15 in British summer.
 
-### storage.js (~230 ln) — persistence boundary
+### storage.js (~270 ln) — persistence boundary
 Plain JSON. `load()`, the per-area saves, and the shared validators.
 **Touch to:** change how data is stored, loaded or validated.
 **⚠ Data-integrity zone — run a backup round-trip after every edit.**
@@ -123,15 +124,18 @@ Plain JSON. `load()`, the per-area saves, and the shared validators.
 a second set — a backup restoring under different rules produces a state the app
 has never been tested against. Rules 7 and 8 live here.
 
-### log.js (~250 ln) — THE RECORD MODEL
+### log.js (~380 ln) — THE RECORD MODEL
 Two record types, the sticky location, duplicate lookup, add/replace/update/
-delete, learned descriptions, today's counts.
+delete, learned descriptions, quick-pick presets, today's counts.
 **Touch to:** anything about what a record IS or how one changes.
 **Coupling:** rules 5, 11, 12. ⚠ An audit re-scan of a known location REUSES it
 rather than duplicating; an initial over a known location FILLS IT IN. Both are
 deliberate — the client's export must not carry two rows for one kitchen.
 ⚠ `replaceItemRecord()` keeps the original id and ts: a correction is one event,
 not a second one.
+⚠ QUICK-PICK PRESETS ARE CURATED AND THE LEARNED DESCRIPTIONS ARE NOT. Nothing
+on the scan path writes to a preset. Fusing the two is what made a removed item
+reappear and the grid reshuffle (V1, fixed V1.1). Harness 09a/09b, mutation M51.
 
 ### feedback.js (~230 ln) — toast, dialogs, haptic / flash / sound
 `showToast`, `_openSheet` and the three shared dialogs, the feedback channels.
@@ -191,7 +195,7 @@ message rather than passing it through. Do not add a raw-text fallback.
 limit: boot.js loads last, so a parse-time failure earlier predates these
 handlers — the integrity guard covers that case instead.
 
-### render.js (~520 ln) — every screen, every sheet
+### render.js (~845 ln) — every screen, every sheet
 `setView`, `render()` and its dispatcher, the scan screen, log, settings pages,
 about, welcome, and the four sheets (new item, new location, fail reason, edit).
 **Touch to:** change any screen or sheet.
@@ -200,9 +204,15 @@ nothing here attaches an `onclick` — a listener bound to a node innerHTML is
 about to replace is a leak and a dead button. The SHEETS are the deliberate
 exception: they live outside `#app`, so their handlers are safe and bound
 directly. ⚠ Suggestions commit on `pointerdown`, not `click` — a click races the
-blur teardown and iOS loses the tap.
+blur teardown and iOS loses the tap. ⚠ The suggestion dropdown is an OVERLAY
+(`.desc-wrap` + absolute `.suggest`) and the quick-pick grid is STATIC — nothing
+in an open sheet may change the height of anything else in it. Harness 09h–09j,
+mutations M56/M57. ⚠ `openEditSheet(id, draft)` — the second argument is how
+unsaved edits survive the trip to the fail-reason picker, which destroys the
+sheet. `openFailSheet(onPick, onCancel)` — a caller with its own form MUST pass
+`onCancel` or backing out loses that form.
 
-### dispatch.js (~330 ln) — the scan grammar and delegated events
+### dispatch.js (~420 ln) — the scan grammar and delegated events
 `routeScan()` — what a barcode MEANS — plus the three registries (`ACTIONS`,
 `INPUT_ACTIONS`, `CHANGE_ACTIONS`) attached once to `#app` at boot.
 **Touch to:** change the scan grammar or add a delegated handler.

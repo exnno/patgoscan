@@ -32,6 +32,10 @@ function buildBackup() {
     records: state.records,
     failReasons: state.failReasons,
     descriptions: state.descriptions,
+    // V1.1, additive — an older app ignores both keys wholesale and a V1 backup
+    // simply arrives without them, which is why backupVersion does not move.
+    itemPresets: state.itemPresets,
+    activePresetId: state.activePresetId || '',
     prefs: {
       theme: state.theme,
       haptic: state.haptic,
@@ -100,6 +104,13 @@ function restoreBackupObject(obj) {
   state.mode = normaliseMode(obj.mode);
   state.failReasons = normaliseStringList(obj.failReasons, makeDefaultFailReasons, 40);
   state.descriptions = normaliseStringList(obj.descriptions, makeSeedDescriptions, DESCRIPTIONS_STORED_MAX);
+
+  // ⚠ THE SAME VALIDATORS load() USES, not a second relaxed set. A V1 backup has
+  // no presets at all and lands on the default preset — it must not land on an
+  // empty grid, which is what an unvalidated `obj.itemPresets` of undefined
+  // would give.
+  state.itemPresets = normalisePresets(obj.itemPresets);
+  state.activePresetId = resolveActivePreset(obj.activePresetId, state.itemPresets);
 
   const p = (obj.prefs && typeof obj.prefs === 'object') ? obj.prefs : {};
   state.theme = normaliseTheme(p.theme);

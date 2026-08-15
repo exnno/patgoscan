@@ -347,7 +347,18 @@ function renderSettingsScanner() {
   </div>`;
 }
 
+// ⚠ THE ITEMS TEXTAREA IS UNCOMMITTED UNTIL SAVE, AND render() REBUILDS #app.
+// So anything that re-renders — switching list, adding one, renaming one —
+// discards whatever was typed into it. That is why the Save button is explicit
+// and why the line under the box says so in plain words: the alternative,
+// committing on every keystroke, would mean a half-typed line briefly becoming
+// a real button, and it breaks the no-render-on-a-keystroke rule.
 function renderSettingsLists() {
+  const presets = state.itemPresets || [];
+  const active = activePreset();
+  const activeId = active ? active.id : '';
+  const items = active ? active.items : [];
+
   const reasons = state.failReasons.map((r, i) => `
     <div class="rowline">
       <span>${escapeHTML(r)}</span>
@@ -364,10 +375,30 @@ function renderSettingsLists() {
       ${reasons || '<p class="muted">No fail reasons. Add one below.</p>'}
       <button type="button" class="btn btn-ghost btn-wide" data-action="addReason">Add a fail reason</button>
 
-      <h2 class="sec">Item descriptions</h2>
-      <p class="muted small">Descriptions are remembered as you type them and offered back, most recent first. There is nothing to set up.</p>
+      <h2 class="sec">Quick Pick</h2>
+      <p class="muted small">The buttons on the new item sheet. Tap one instead of typing. Up to ${QUICK_PICK_MAX}, one per line, in the order you want them on screen.</p>
+      <select class="field" id="qp-preset" data-change-action="switchPreset" aria-label="Quick Pick list">
+        ${presets.map(p => `<option value="${escapeHTML(p.id)}"${p.id === activeId ? ' selected' : ''}>${escapeHTML(p.name)}</option>`).join('')}
+      </select>
+      <div class="rowline-actions">
+        <button type="button" class="linkbtn" data-action="addPreset">New list</button>
+        <button type="button" class="linkbtn" data-action="renamePreset">Rename</button>
+        ${presets.length > 1
+          ? '<button type="button" class="linkbtn is-danger" data-action="deletePreset">Delete</button>'
+          : ''}
+      </div>
+      <textarea class="field qp-items" id="qp-items" rows="9"
+                autocapitalize="words" spellcheck="false">${escapeHTML(items.join('\n'))}</textarea>
+      <p class="muted small">Changes here are not kept until you tap Save.</p>
+      <div class="rowline-actions">
+        <button type="button" class="btn btn-ghost" data-action="resetQuickPicks">Reset to defaults</button>
+        <button type="button" class="btn btn-primary" data-action="saveQuickPicks">Save</button>
+      </div>
+
+      <h2 class="sec">Typed descriptions</h2>
+      <p class="muted small">Separate from Quick Pick. Anything you type into the description box is remembered and offered back in the dropdown as you type it again. Nothing to set up, and it never changes your Quick Pick buttons.</p>
       <p class="muted small">${state.descriptions.length} remembered.</p>
-      <button type="button" class="btn btn-ghost btn-wide" data-action="resetDescriptions">Reset to the starter list</button>
+      <button type="button" class="btn btn-ghost btn-wide" data-action="resetDescriptions">Forget them and start again</button>
     </main>
   </div>`;
 }
@@ -411,6 +442,7 @@ function renderAbout() {
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V1.1</b> — Quick Pick buttons on the new item sheet, with your own lists you can edit in Settings. The description dropdown no longer moves the form around as you type. Correcting an item to FAIL in the log now asks for the reason.</p>
       <p class="muted small"><b>V1</b> — first release. Audit and initial modes, sticky locations, scan-to-log, CSV export and full backup.</p>
 
       <p class="muted small">© 2026 Peter Birchley. All rights reserved.</p>
@@ -444,15 +476,33 @@ function renderWelcome() {
 // ---------------------------------------------------------------------------
 
 // Initial mode, asset scanned: gather description and class before the result.
+// ⚠ NOTHING IN THIS SHEET MAY CHANGE THE HEIGHT OF ANYTHING ABOVE OR BELOW IT
+// WHILE IT IS BEING USED. That is the V1.1 fix. In V1 the suggestion list was
+// an in-flow row of chips that repainted on every keystroke AND again when one
+// was tapped — so the Class buttons and Continue jumped down the screen as you
+// typed, and the list reshuffled out from under the finger at the moment of the
+// tap. Two rules keep it still:
+//   1. The GRID IS STATIC. Tapping a button toggles a class on it. The grid is
+//      never rebuilt, never reordered, never re-filtered while the sheet lives.
+//   2. The DROPDOWN IS AN OVERLAY — position:absolute inside .desc-wrap, so it
+//      floats over the Class row instead of pushing it down. Showing and hiding
+//      it moves nothing. This is the pattern PATGo uses on its entry screen.
 function openNewItemSheet(code) {
   const sheet = _openSheet('New item');
+  const picks = quickPickItems();
   sheet.innerHTML = `
     <h3 class="sheet-title">New item</h3>
     <p class="sheet-code">${escapeHTML(code)}</p>
-    <label class="lbl" for="ni-desc">Description</label>
-    <input type="text" id="ni-desc" class="field" autocomplete="off"
-           autocapitalize="words" spellcheck="false" placeholder="e.g. Kettle">
-    <div id="ni-suggest" class="suggest"></div>
+    <label class="lbl">Description</label>
+    ${picks.length ? `<div class="quick-grid" id="ni-quick">
+      ${picks.map(p => `<button type="button" class="quick-btn" data-q="${escapeHTML(p)}">${escapeHTML(p)}</button>`).join('')}
+    </div>` : ''}
+    <div class="desc-wrap">
+      <input type="text" id="ni-desc" class="field" autocomplete="off"
+             autocapitalize="words" spellcheck="false"
+             placeholder="${picks.length ? '…or type it' : 'e.g. Kettle'}">
+      <div id="ni-suggest" class="suggest is-hidden"></div>
+    </div>
     <label class="lbl">Class</label>
     <div class="classpick" id="ni-class">
       ${CLASS_OPTIONS.map(c => `<button type="button" class="class-opt" data-cls="${c}">Class ${c}</button>`).join('')}
@@ -466,12 +516,32 @@ function openNewItemSheet(code) {
   const desc = sheet.querySelector('#ni-desc');
   const suggest = sheet.querySelector('#ni-suggest');
 
+  // Marks whichever grid button matches what is in the box. Cosmetic only, and
+  // it does not rebuild the grid — it toggles a class on buttons already there.
+  const markGrid = () => {
+    const v = cleanText(desc.value, 80).toLowerCase();
+    sheet.querySelectorAll('.quick-btn').forEach(b =>
+      b.classList.toggle('is-on', (b.getAttribute('data-q') || '').toLowerCase() === v));
+  };
+
+  const hideSuggest = () => {
+    suggest.innerHTML = '';
+    suggest.classList.add('is-hidden');
+  };
+
+  // Only ever called from typing. A tap on a suggestion HIDES the list rather
+  // than re-running it: re-running was what made the list re-order and drop the
+  // word just picked, right as the finger came down on it.
   const paintSuggest = () => {
-    const list = suggestDescriptions(desc.value);
+    const typed = cleanText(desc.value, 80);
+    if (!typed) { hideSuggest(); markGrid(); return; }
+    const list = suggestDescriptions(typed);
+    if (!list.length) { hideSuggest(); markGrid(); return; }
     suggest.innerHTML = list.map(d =>
       `<button type="button" class="suggestion-item" data-d="${escapeHTML(d)}">${escapeHTML(d)}</button>`).join('');
+    suggest.classList.remove('is-hidden');
+    markGrid();
   };
-  paintSuggest();
 
   // ⚠ pointerdown, NOT click. A click races the blur teardown and iOS loses the
   // tap entirely — this cost the parent app a hotfix.
@@ -480,9 +550,20 @@ function openNewItemSheet(code) {
     if (!btn) return;
     e.preventDefault();
     desc.value = btn.getAttribute('data-d') || '';
-    paintSuggest();
+    hideSuggest();
+    markGrid();
   });
   desc.addEventListener('input', paintSuggest);
+
+  if (picks.length) {
+    sheet.querySelector('#ni-quick').addEventListener('click', (e) => {
+      const btn = e.target.closest('.quick-btn');
+      if (!btn) return;
+      desc.value = btn.getAttribute('data-q') || '';
+      hideSuggest();
+      markGrid();
+    });
+  }
 
   sheet.querySelector('#ni-class').addEventListener('click', (e) => {
     const btn = e.target.closest('.class-opt');
@@ -501,7 +582,15 @@ function openNewItemSheet(code) {
     state.pending = { code: code, mode: MODE_INITIAL, description: d, cls: chosenClass };
     render();
   };
-  setTimeout(() => { try { desc.focus(); } catch (e) {} }, 60);
+
+  // ⚠ V1.1: THE BOX IS ONLY FOCUSED WHEN THERE IS NO GRID TO COVER. Focusing it
+  // raises the keyboard, which on a phone hides the very grid the engineer is
+  // meant to tap — so the one-tap path would be buried behind the slow path.
+  // With no preset items there is nothing to hide, and the keyboard up front is
+  // then the fastest thing we can do.
+  if (!picks.length) {
+    setTimeout(() => { try { desc.focus(); } catch (e) {} }, 60);
+  }
 }
 
 // Initial mode, location scanned: gather client, floor, room.
@@ -553,7 +642,14 @@ function _lastLocationField(field) {
   return locs[0][field];
 }
 
-function openFailSheet(onPick) {
+// ⚠ onCancel IS NOT OPTIONAL DECORATION. Opening this sheet destroys whatever
+// sheet was open (one sheet at a time, by construction), so a caller that had
+// its own half-finished form — the edit sheet — has to be handed a way back.
+// Without it, tapping FAIL and then changing your mind drops you on the log with
+// your other edits silently thrown away. Default stays render() for the scan
+// path, where there is nothing to go back to.
+function openFailSheet(onPick, onCancel) {
+  const back = (typeof onCancel === 'function') ? onCancel : () => render();
   const sheet = _openSheet('Fail reason');
   sheet.innerHTML = `
     <h3 class="sheet-title">Why did it fail?</h3>
@@ -566,7 +662,7 @@ function openFailSheet(onPick) {
       <button type="button" class="btn btn-ghost" id="fs-cancel">Cancel</button>
     </div>`;
 
-  sheet.querySelector('#fs-cancel').onclick = () => { closeSheet(); render(); };
+  sheet.querySelector('#fs-cancel').onclick = () => { closeSheet(); back(); };
   sheet.querySelector('.reasonlist').addEventListener('click', (e) => {
     const btn = e.target.closest('.reason');
     if (!btn) return;
@@ -579,10 +675,10 @@ function openFailSheet(onPick) {
         confirmLabel: 'Use this',
         onConfirm: (v) => {
           const t = cleanText(v, 120);
-          if (!t) { render(); return; }
+          if (!t) { back(); return; }
           onPick(t);
         },
-        onCancel: () => render(),
+        onCancel: back,
       });
       return;
     }
@@ -591,7 +687,15 @@ function openFailSheet(onPick) {
 }
 
 // The correction path. One sheet for both record types.
-function openEditSheet(id) {
+//
+// ⚠ V1.1: `draft` IS HOW THE SHEET SURVIVES A TRIP TO THE REASON PICKER. Opening
+// any other sheet destroys this one, so before leaving we snapshot the fields as
+// they stand and pass them back in on the way home. Without it, correcting an
+// item to FAIL would discard the description or class you had just fixed in the
+// same visit — a silent data loss on the screen whose entire job is putting data
+// right. `draft` is a plain object, not state, so it cannot outlive the round
+// trip or survive navigation (rule 4 has nothing to clear).
+function openEditSheet(id, draft) {
   const rec = recordById(id);
   if (!rec) return;
   const sheet = _openSheet('Edit record');
@@ -620,50 +724,108 @@ function openEditSheet(id) {
       closeSheet(); showToast('Saved'); render();
     };
   } else {
+    // The draft wins over the record where it exists — it is the newer truth,
+    // holding edits made in this visit that have not been saved yet.
+    const d = draft || {};
+    const curDesc = (typeof d.description === 'string') ? d.description : rec.description;
+    const curCls = (typeof d.cls === 'string') ? d.cls : rec.cls;
+    const curRes = (typeof d.result === 'string') ? d.result : rec.result;
+    const curReason = (typeof d.failReason === 'string') ? d.failReason : rec.failReason;
+
     sheet.innerHTML = `
       <h3 class="sheet-title">Item</h3>
       <p class="sheet-code">${escapeHTML(rec.code)}</p>
       <label class="lbl" for="ed-desc">Description</label>
-      <input type="text" id="ed-desc" class="field" value="${escapeHTML(rec.description)}" autocapitalize="words">
+      <input type="text" id="ed-desc" class="field" value="${escapeHTML(curDesc)}" autocapitalize="words">
       <label class="lbl">Class</label>
       <div class="classpick" id="ed-class">
-        ${CLASS_OPTIONS.map(c => `<button type="button" class="class-opt${rec.cls === c ? ' is-on' : ''}" data-cls="${c}">Class ${c}</button>`).join('')}
+        ${CLASS_OPTIONS.map(c => `<button type="button" class="class-opt${curCls === c ? ' is-on' : ''}" data-cls="${c}">Class ${c}</button>`).join('')}
       </div>
       <label class="lbl">Result</label>
       <div class="classpick" id="ed-result">
-        <button type="button" class="class-opt${rec.result === 'pass' ? ' is-on' : ''}" data-res="pass">PASS</button>
-        <button type="button" class="class-opt${rec.result === 'fail' ? ' is-on' : ''}" data-res="fail">FAIL</button>
+        <button type="button" class="class-opt${curRes === 'pass' ? ' is-on' : ''}" data-res="pass">PASS</button>
+        <button type="button" class="class-opt${curRes === 'fail' ? ' is-on' : ''}" data-res="fail">FAIL</button>
       </div>
-      <label class="lbl" for="ed-reason">Fail reason</label>
-      <input type="text" id="ed-reason" class="field" value="${escapeHTML(rec.failReason)}"
-             list="ed-reasons" placeholder="Only used on a fail">
-      <datalist id="ed-reasons">
-        ${state.failReasons.map(r => `<option value="${escapeHTML(r)}"></option>`).join('')}
-      </datalist>
+      <div class="reasonrow${curRes === 'fail' ? '' : ' is-hidden'}" id="ed-reasonrow">
+        <span class="reasonrow-label">Fail reason</span>
+        <span class="reasonrow-value" id="ed-reasontext">${escapeHTML(curReason || 'Not set')}</span>
+        <button type="button" class="linkbtn" id="ed-reasonchange">Change</button>
+      </div>
       <div class="sheet-actions">
         <button type="button" class="btn btn-danger" id="ed-del">Delete</button>
         <button type="button" class="btn btn-ghost" id="ed-cancel">Cancel</button>
         <button type="button" class="btn btn-primary" id="ed-ok">Save</button>
       </div>`;
 
-    let cls = rec.cls;
-    let res = rec.result;
+    let cls = curCls;
+    let res = curRes;
+    let reason = curReason;
+
+    // Everything typed or tapped so far, in the shape openEditSheet takes back.
+    const snapshot = () => ({
+      description: sheet.querySelector('#ed-desc').value,
+      cls: cls,
+      result: res,
+      failReason: reason,
+    });
+
+    // ⚠ THE SAME PICKER THE SCAN SCREEN USES, not a second copy of the list. One
+    // list, one behaviour: a reason edited in Settings changes both at once, and
+    // the Other… path is already handled there.
+    const askReason = () => {
+      const draftNow = snapshot();
+      draftNow.result = 'fail';
+      closeSheet();
+      openFailSheet(
+        (picked) => {
+          draftNow.failReason = picked;
+          openEditSheet(id, draftNow);
+        },
+        // Backing out keeps the fail selected but leaves the reason as it was —
+        // the engineer said FAIL and meant it; they just did not choose a reason
+        // this second. Save still refuses without one.
+        () => openEditSheet(id, draftNow)
+      );
+    };
+
     sheet.querySelector('#ed-class').addEventListener('click', (e) => {
       const b = e.target.closest('.class-opt'); if (!b) return;
       cls = b.getAttribute('data-cls');
       sheet.querySelectorAll('#ed-class .class-opt').forEach(x => x.classList.toggle('is-on', x === b));
     });
+
     sheet.querySelector('#ed-result').addEventListener('click', (e) => {
       const b = e.target.closest('.class-opt'); if (!b) return;
       res = b.getAttribute('data-res');
       sheet.querySelectorAll('#ed-result .class-opt').forEach(x => x.classList.toggle('is-on', x === b));
+      if (res === 'fail') {
+        // V1.1: tapping FAIL raises the reason picker straight away, exactly as
+        // it does on the scan screen. In V1 this was a text box with a dropdown
+        // that nobody found, so corrections to FAIL went out with no reason.
+        askReason();
+        return;
+      }
+      // A pass has no reason. Leaving one behind would export a passed item
+      // carrying "Damaged Lead" — the validator drops it on the way in, but the
+      // engineer would have seen it on screen and believed it.
+      reason = '';
+      sheet.querySelector('#ed-reasontext').textContent = 'Not set';
+      sheet.querySelector('#ed-reasonrow').classList.add('is-hidden');
     });
+
+    sheet.querySelector('#ed-reasonchange').onclick = askReason;
+
     sheet.querySelector('#ed-ok').onclick = () => {
+      if (res === 'fail' && !cleanText(reason, 120)) {
+        showToast('Pick a fail reason');
+        askReason();
+        return;
+      }
       updateRecordFields(id, {
         description: titleCaseWords(sheet.querySelector('#ed-desc').value),
         cls: cls,
         result: res,
-        failReason: sheet.querySelector('#ed-reason').value,
+        failReason: reason,
       });
       closeSheet(); showToast('Saved'); render();
     };
