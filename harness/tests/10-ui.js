@@ -39,22 +39,27 @@ module.exports = function (app) {
     app.fn('closeSheet')();
   });
 
-  A.group('10b the location on the sheet is read-only', () => {
-    // Read-only THIS release; the move-to-another-location picker is a
-    // separate one. If a future edit adds an input or a data-action inside the
-    // metarow, that release has changed behaviour and should say so.
+  A.group('10b the location on the sheet is changeable, and not by typing', () => {
+    // ⚠ THIS GROUP SAID THE OPPOSITE UNTIL V4, and said so on purpose: the V2
+    // version asserted the row was read-only and left a note that a release
+    // adding a control here had changed behaviour and should say so. This is
+    // that release saying so.
+    //
+    // What stays true is that the location is NEVER a free-text field. It is
+    // picked from locations that exist, because a typed one would put a code in
+    // the export with no location row anywhere in the file to match it.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', INITIAL, { room: 'Staff Kitchen' });
     app.fn('addItemRecord')({ code: 'A1', mode: INITIAL }, 'pass', '');
     app.fn('openEditSheet')(app.fn('itemRecords')()[0].id);
     const sheet = F.openSheetEl(app);
     const html = sheet ? sheet.innerHTML : '';
-    const start = html.indexOf('metarow');
+    const start = html.indexOf('ed-locrow');
     const end = html.indexOf('</div>', start);
     const block = start === -1 ? '' : html.slice(start, end);
-    A.ok('the metarow is present', start !== -1);
-    A.ok('with no input in it', block.indexOf('<input') === -1);
-    A.ok('and nothing tappable', block.indexOf('data-action') === -1);
+    A.ok('the location row is present', start !== -1);
+    A.ok('with a way to change it', block.indexOf('ed-locchange') !== -1);
+    A.ok('and no text box to type one into', block.indexOf('<input') === -1);
     app.fn('closeSheet')();
   });
 
@@ -143,8 +148,13 @@ module.exports = function (app) {
       css.indexOf('.rowline + .row') !== -1);
     A.ok('the no-nav gutter override exists',
       css.indexOf('.main--nonav') !== -1);
-    A.ok('the read-only metarow is styled',
-      css.indexOf('.metarow') !== -1);
+    // V4 RETIRED .metarow. The location row is tappable now, so it took the
+    // .reasonrow shape — a value plus a way to change it — and the rule that
+    // made it deliberately look untappable went with it. 11a below asserts the
+    // replacement; leaving this one pointed at a deleted class would have gone
+    // red for the right reason and told you the wrong thing.
+    A.ok('the move picker rows are styled',
+      css.indexOf('.locpick') !== -1);
   });
 
   A.group('10h the mode tint is its own token', () => {
@@ -180,18 +190,18 @@ module.exports = function (app) {
 
   A.group('10j the release strings all agree', () => {
     const css = L.readFile('styles.css');
-    A.eq('the app version is V3', app.val('APP_VERSION'), 'V3');
-    A.eq('the welcome rolled with it', app.val('WELCOME_VERSION'), 'V3');
-    A.eq('the cache key matches', L.cacheVersion(), 'scan-v3');
-    A.ok('About leads with V3',
-      app.fn('renderAbout')().indexOf('<b>V3</b>') !== -1);
-    // Rolling three: V3, V2, V1.1. ⚠ V1 must have DROPPED OFF — asserting only
-    // that the oldest is present would stay green on a changelog that had
+    A.eq('the app version is V4', app.val('APP_VERSION'), 'V4');
+    A.eq('the welcome rolled with it', app.val('WELCOME_VERSION'), 'V4');
+    A.eq('the cache key matches', L.cacheVersion(), 'scan-v4');
+    A.ok('About leads with V4',
+      app.fn('renderAbout')().indexOf('<b>V4</b>') !== -1);
+    // Rolling three: V4, V3, V2. ⚠ THE OLDEST MUST HAVE DROPPED OFF — asserting
+    // only that the tail is present would stay green on a changelog that had
     // simply grown a fourth entry and never dropped anything.
-    A.ok('and still lists three, oldest V1.1',
-      app.fn('renderAbout')().indexOf('<b>V1.1</b>') !== -1);
-    A.ok('with V1 dropped off the bottom',
-      app.fn('renderAbout')().indexOf('<b>V1</b>') === -1);
+    A.ok('and still lists three, oldest V2',
+      app.fn('renderAbout')().indexOf('<b>V2</b>') !== -1);
+    A.ok('with V1.1 dropped off the bottom',
+      app.fn('renderAbout')().indexOf('<b>V1.1</b>') === -1);
     // The amber set is kept in the stylesheet on purpose — it is the one-edit
     // route back if the two apps ever do get confused on a job.
     A.ok('the V1 amber palette is still recorded', css.indexOf('#b45309') !== -1);
