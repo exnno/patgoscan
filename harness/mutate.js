@@ -39,7 +39,7 @@ const MUTATIONS = [
   // the version bump breaks the find string and the mutation reports SKIPPED.
   // Update it as part of the bump; a skip here means the cache-key invariant
   // is unguarded for that release, which is how a build ships without one.
-  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v5'", "const CACHE_VERSION = 'pat-v71'",
+  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v6'", "const CACHE_VERSION = 'pat-v71'",
     'cache key using the parent app prefix'],
   ['M04', 'utils.js', '(c) 2026 Peter Birchley. All rights reserved.', '(c) 2026',
     'copyright header stripped'],
@@ -148,8 +148,10 @@ const MUTATIONS = [
   // guaranteed. The invariant worth guarding moved with it: a column's key and
   // its cell must belong to each other, because a value under the wrong header
   // is the one failure a reorder-safe design does not prevent.
-  ['M39', 'config.js', "  { key: 'description', cell: (r) => (r.type === 'item' ? (r.description || '') : '') },",
-    "  { key: 'description', cell: (r) => (r.type === 'item' ? (r.result || '') : '') },",
+  // ⚠ RE-POINTED IN V6 (third release running). The column is now DESCRIPTION
+  // and it is gated on mode rather than on record type.
+  ['M39', 'config.js', "  { key: 'DESCRIPTION', cell: (r) => (r.mode === MODE_INITIAL ? (r.description || '') : '') },",
+    "  { key: 'DESCRIPTION', cell: (r) => (r.mode === MODE_INITIAL ? (r.code || '') : '') },",
     'a column carrying the wrong value under the right header'],
   ['M40', 'csv.js', 'const list = state.records.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));',
     'const list = state.records.slice().sort(byNewest);',
@@ -300,14 +302,15 @@ const MUTATIONS = [
   ['M80', 'log.js', '      const loc = locationRecordById(fields.locationId);',
     '      const loc = { id: fields.locationId, code: fields.locationId };',
     'a dangling location id accepted, overwriting the barcode actually scanned'],
+  // ⚠ RE-POINTED IN V6 — the snapshot gained the two readings after locationId.
   ['M81', 'render.js',
-    '      failReason: reason,\n      locationId: locId,\n    });',
-    '      failReason: reason,\n    });',
+    '      locationId: locId,\n      earthBond:',
+    '      earthBond:',
     'the draft dropping the picked location on the way to another sheet'],
   ['M82', 'render.js',
-    '        locationId: locId,\n      });',
-    '      });',
-    'Save writing every field except the one this release added'],
+    '        locationId: locId,\n        earthBond:',
+    '        earthBond:',
+    'Save writing every field except the location'],
   ['M83', 'render.js',
     "  const curLocId = (typeof d.locationId === 'string') ? d.locationId : rec.locationId;",
     '  const curLocId = rec.locationId;',
@@ -344,7 +347,9 @@ const MUTATIONS = [
   // entirely. M92, M95 and M99 all break it in the direction that survives a
   // careless test.
 
-  ['M92', 'log.js', '    visual: pending.visual === true,', '    visual: false,',
+  // ⚠ RE-POINTED IN V6 — the flag is settled into a local before the record
+  // literal so the key order matches normaliseRecord().
+  ['M92', 'log.js', '  const visual = pending.visual === true;', '  const visual = false;',
     'the visual flag never reaching a new record'],
   ['M93', 'log.js', '  rec.visual = pending.visual === true;',
     '  if (pending.visual) rec.visual = true;',
@@ -359,8 +364,10 @@ const MUTATIONS = [
     'Visual defaulting ON for a phone that has never set it'],
   ['M97', 'storage.js', "  _lsSet(VISUAL_KEY, state.visualMode ? '1' : '0');", '',
     'the toggle not surviving a restart'],
-  ['M98', 'storage.js', '  return (CLASS_OPTIONS.indexOf(v) !== -1) ? v : ITEM_CLASS_DEFAULT;',
-    '  return (CLASS_OPTIONS.indexOf(v) !== -1) ? v : \'\';',
+  // ⚠ RE-POINTED IN V6 — the toggle validator now runs through the migration
+  // first and falls back afterwards.
+  ['M98', 'storage.js', '  return migrated || ITEM_CLASS_DEFAULT;',
+    '  return migrated;',
     'a stored class falling back to blank, painting neither segment as on'],
   ['M99', 'dispatch.js', '    visual: state.visualMode === true,', '    visual: false,',
     'the toggle not reaching an audit scan'],
@@ -373,20 +380,24 @@ const MUTATIONS = [
 
   // The column spec. These are the deliverable, and the reorder-safety of the
   // whole V5 arrangement rests on them.
-  ['M103', 'config.js', "  { key: 'class_1', cell: (r) => (r.type === 'item' && r.cls === 'I') ? r.code : '' },",
-    "  { key: 'class_1', cell: (r) => '' },",
-    'the class_1 column silently emptying'],
-  ['M104', 'config.js', "  { key: 'visual',  cell: (r) => (r.type === 'item' && r.visual === true) ? r.code : '' },",
-    "  { key: 'visual',  cell: (r) => '' },",
-    'the visual column silently emptying'],
-  ['M105', 'config.js', "  { key: 'asset_id',    cell: (r) => (r.type === 'item' ? r.code : '') },",
-    "  { key: 'asset_id',    cell: (r) => '' },",
-    'decision 1A quietly becoming 1B'],
-  ['M106', 'config.js', "  { key: 'class_2', cell: (r) => (r.type === 'item' && r.cls === 'II') ? r.code : '' },",
-    "  { key: 'class_2', cell: (r) => (r.type === 'item' && r.visual !== true && r.cls === 'II') ? r.code : '' },",
-    'decision 2B broken — visual suppressing the class column'],
-  ['M107', 'csv.js', '      try { v = cols[c].cell(r); } catch (e) { v = \'\'; }',
-    '      v = cols[c].cell(r);',
+  // ⚠ M103–M107 RE-POINTED IN V6, NOT DELETED. The class_1 / class_2 / visual
+  // columns they were written against are retired, but the invariants behind
+  // them are not: a column that silently empties, and a column that lets one
+  // field suppress another. They now aim at the V6 equivalents.
+  ['M103', 'config.js', "  { key: 'CLASS',    cell: (r) => r.cls || '' },",
+    "  { key: 'CLASS',    cell: (r) => '' },",
+    'the class column silently emptying'],
+  ['M104', 'config.js', "  { key: 'INSULATION', cell: (r) => r.insulation || '' },",
+    "  { key: 'INSULATION', cell: (r) => '' },",
+    'the insulation column emptying — every tested item reading as visual-only'],
+  ['M105', 'config.js', "  { key: 'ASSET ID', cell: (r) => r.code || '' },",
+    "  { key: 'ASSET ID', cell: (r) => '' },",
+    'the asset id no longer reaching the file'],
+  ['M106', 'config.js', "  { key: 'EARTH BOND', cell: (r) => (r.cls === CLASS_NO_EARTH_BOND ? '' : (r.earthBond || '')) },",
+    "  { key: 'EARTH BOND', cell: (r) => r.earthBond || '' },",
+    'the class 2 earth bond guard removed from the export boundary'],
+  ['M107', 'csv.js', '      try { v = cols[c].cell(r, ctx); } catch (e) { v = \'\'; }',
+    '      v = cols[c].cell(r, ctx);',
     'one bad column taking the whole export with it'],
   ['M108', 'csv.js', '  const rows = [csvRow(cols.map(c => c.key))];',
     '  const rows = [csvRow(cols.map(c => c.key).slice(1))];',
@@ -415,6 +426,76 @@ const MUTATIONS = [
     'an initial-mode item never recorded as visual'],
   ['M117', 'styles.css', '.tog-opt.is-warn.is-on {', '.tog-opt.is-warn.is-NOT-on {',
     'the Visual toggle losing the colour that makes it noticeable'],
+
+  // --- V6: the client's real layout --------------------------------------
+
+  // ⚠ THE ONE THAT MATTERS MOST. A Class II appliance has no earth to bond, so
+  // a value in that column claims a test that cannot physically be performed.
+  ['M118', 'log.js', "    earthBond: (cls === CLASS_NO_EARTH_BOND) ? '' : cleanText(state.earthBondValue, READING_MAX),",
+    '    earthBond: cleanText(state.earthBondValue, READING_MAX),',
+    'a class 2 item written with an earth bond reading'],
+
+  // ⚠ THE BROKEN READING OF 7A, and the reason 13f exists. Hoisting the Set out
+  // of the function makes "first in this file" mean "first ever" — which is
+  // invisible in any single export and loses the floor and room from every file
+  // after the first.
+  // ⚠ IT MUST BREAK THE BEHAVIOUR, NOT THE SYNTAX. An undefined identifier here
+  // would throw, and the suite going red on a ReferenceError proves nothing
+  // about whether 13f's assertions work. This parks the Set on the function
+  // object so it genuinely persists between exports — which is exactly the
+  // "first ever" reading, and it is silent in any single file.
+  ['M119', 'csv.js', '  const seenLocation = {};',
+    '  const seenLocation = (csvRowsForRecords._ever = csvRowsForRecords._ever || {});',
+    'first-in-file becoming first-ever — descriptors missing from every later file'],
+
+  ['M120', 'config.js', "  { key: 'DESCRIPTION', cell: (r) => (r.mode === MODE_INITIAL ? (r.description || '') : '') },",
+    "  { key: 'DESCRIPTION', cell: (r) => r.description || '' },",
+    'a description going out on audit rows the client already holds'],
+
+  ['M121', 'utils.js', "  return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();",
+    "  return pad2(d.getMonth() + 1) + '/' + pad2(d.getDate()) + '/' + d.getFullYear();",
+    'the date emitted month-first — an American reading of the client\'s file'],
+
+  ['M122', 'csv.js', "  const items = recs.filter(r => r.type === 'item');", '  const items = recs;',
+    'location records emitted as rows the client\'s importer never asked for'],
+
+  ['M123', 'storage.js', "  if (v === 'II') return '2';", "  if (v === 'II') return '1';",
+    'the class migration mapping II onto Class 1'],
+
+  // ⚠ THE 3B TRAP. Under decision 3B the readings are the ONLY thing separating
+  // a visual inspection from a full test, so blanking one for tidiness silently
+  // reclassifies tested items as inspections — understating work that was done.
+  ['M124', 'log.js', '    insulation: cleanText(state.insulationValue, READING_MAX),',
+    "    insulation: '',",
+    'a tested item exporting as a visual inspection'],
+
+  ['M125', 'log.js', "  if (visual === true || result !== 'pass') return { earthBond: '', insulation: '' };",
+    "  if (visual === true) return { earthBond: '', insulation: '' };",
+    'readings written onto a failed item'],
+
+  // ⚠ THE DANGEROUS CORRECTION. Turning Visual off must bring the readings back
+  // or the fix appears to work on screen and changes nothing in the file.
+  ['M126', 'log.js', "    if (rec.visual !== true && rec.result === 'pass' && !rec.earthBond && !rec.insulation) {",
+    '    if (false) {',
+    'an item corrected from visual to tested still exporting as visual'],
+
+  ['M127', 'config.js', '  if (!ctx || ctx.firstForLocationInFile !== true) return \'\';',
+    '  if (!ctx) return \'\';',
+    'floor and room landing on every row — 7A quietly becoming 7C'],
+
+  ['M128', 'csv.js', 'text: csvRowsForRecords(items).join', 'text: csvRowsForRecords(recs).join',
+    'the rows and the marked records drifting apart'],
+
+  ['M129', 'backup.js', '  if (typeof obj.backupVersion === \'number\' && obj.backupVersion > BACKUP_VERSION) {',
+    '  if (false) {',
+    'a backup from a newer build imported optimistically and silently degraded'],
+
+  ['M130', 'render.js', '      ${renderLastItem()}', '',
+    'the last item quick view missing from the scan screen'],
+
+  ['M131', 'log.js', "    if (r.type !== 'item') continue;\n    if (!best || byNewest(r, best) < 0) best = r;",
+    "    if (!best || byNewest(r, best) < 0) best = r;",
+    'the quick view offering a location as the last thing recorded'],
 ];
 
 function run(cmd) {
