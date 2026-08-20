@@ -32,7 +32,7 @@ module.exports = function (app) {
     F.resetApp(app);
     const kitchen = app.fn('addLocationRecord')('LOC-K', INITIAL,
       { client: 'Acme Ltd', floor: 'Ground', room: 'Staff Kitchen' });
-    app.fn('addItemRecord')({ code: 'A1', mode: INITIAL, description: 'Kettle', cls: 'I' }, 'pass', '');
+    app.fn('addItemRecord')({ code: 'A1', mode: INITIAL, description: 'Kettle', cls: '1' }, 'pass', '');
     const corridor = app.fn('addLocationRecord')('LOC-C', INITIAL,
       { client: 'Acme Ltd', floor: 'First', room: 'Corridor' });
     const item = app.fn('itemRecords')()[0];
@@ -93,7 +93,13 @@ module.exports = function (app) {
     // ⚠ EVERY CELL IS QUOTED (csvCell). A filter for `item,` matches nothing and
     // leaves an empty string that fails the assertion for a reason that has
     // nothing to do with the move — this cost a few minutes on the first run.
-    const itemLine = csv.split('\r\n').filter(l => l.indexOf('"item"') === 0)[0] || '';
+    //
+    // ⚠ V6 RE-POINTED THE FILTER. It used to find the row by its `record_type`
+    // cell reading "item"; that column is retired and every row in the file is
+    // now an item. The row is found by its asset id instead — which is a
+    // stronger anchor anyway, since it names the record the move was applied to
+    // rather than merely its kind.
+    const itemLine = csv.split('\r\n').filter(l => l.indexOf('"' + item.code + '"') === 0)[0] || '';
     A.ok('there is an item row at all', itemLine !== '');
     A.includes('the item row carries the new location code', itemLine, 'LOC-C');
     A.excludes('and not the old one', itemLine, 'LOC-K');
@@ -197,7 +203,7 @@ module.exports = function (app) {
     // records already on the phone.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-K', AUDIT, null);
-    app.fn('addItemRecord')({ code: 'A1', mode: INITIAL, description: 'Kettle', cls: 'I' }, 'pass', '');
+    app.fn('addItemRecord')({ code: 'A1', mode: INITIAL, description: 'Kettle', cls: '1' }, 'pass', '');
     // ⚠ THE CLOCK HAS TO MOVE BETWEEN THEM. Both records are written inside the
     // same millisecond otherwise, and "newest first" then has nothing to sort
     // on — the assertion would be reading insertion order and calling it

@@ -190,18 +190,18 @@ module.exports = function (app) {
 
   A.group('10j the release strings all agree', () => {
     const css = L.readFile('styles.css');
-    A.eq('the app version is V5', app.val('APP_VERSION'), 'V5');
-    A.eq('the welcome rolled with it', app.val('WELCOME_VERSION'), 'V5');
-    A.eq('the cache key matches', L.cacheVersion(), 'scan-v5');
-    A.ok('About leads with V5',
-      app.fn('renderAbout')().indexOf('<b>V5</b>') !== -1);
-    // Rolling three: V5, V4, V3. ⚠ THE OLDEST MUST HAVE DROPPED OFF — asserting
+    A.eq('the app version is V6', app.val('APP_VERSION'), 'V6');
+    A.eq('the welcome rolled with it', app.val('WELCOME_VERSION'), 'V6');
+    A.eq('the cache key matches', L.cacheVersion(), 'scan-v6');
+    A.ok('About leads with V6',
+      app.fn('renderAbout')().indexOf('<b>V6</b>') !== -1);
+    // Rolling three: V6, V5, V4. ⚠ THE OLDEST MUST HAVE DROPPED OFF — asserting
     // only that the tail is present would stay green on a changelog that had
     // simply grown a fourth entry and never dropped anything.
-    A.ok('and still lists three, oldest V3',
-      app.fn('renderAbout')().indexOf('<b>V3</b>') !== -1);
-    A.ok('with V2 dropped off the bottom',
-      app.fn('renderAbout')().indexOf('<b>V2</b>') === -1);
+    A.ok('and still lists three, oldest V4',
+      app.fn('renderAbout')().indexOf('<b>V4</b>') !== -1);
+    A.ok('with V3 dropped off the bottom',
+      app.fn('renderAbout')().indexOf('<b>V3</b>') === -1);
     // The amber set is kept in the stylesheet on purpose — it is the one-edit
     // route back if the two apps ever do get confused on a job.
     //

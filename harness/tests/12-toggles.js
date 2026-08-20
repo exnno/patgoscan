@@ -1,6 +1,13 @@
 /*
  * 12-toggles — V5. The two persistent switches, and the column spec that
  * turned CSV_COLUMNS from a list of names into the whole specification.
+ *
+ * ⚠ V6 RE-POINTED THIS FILE RATHER THAN REPLACING IT. Nine of the fifteen
+ * columns it was written against are retired, and several groups now guard the
+ * OPPOSITE of what they originally claimed — 12d (the id no longer repeats),
+ * 12g (a class 2 row carries no earth bond where it used to carry an id). The
+ * group names and numbers are kept so the mutation ids that point at them stay
+ * meaningful. The rule is the same as for mutations: re-point, never delete.
  * (c) 2026 Peter Birchley. All rights reserved.
  *
  * ⚠ THE QUESTION TO ASK OF EVERY ASSERTION HERE: could this pass on broken
@@ -98,8 +105,8 @@ module.exports = function (app) {
     try { built = app.fn('buildCSV')(false); } catch (e) { built = null; }
     victim.cell = original;
     A.ok('the file was still produced', built !== null);
-    A.eq('with every row present', built.count, 2);
-    A.eq('the failed cell is empty', at(cells(rows(built.text)[2]), victim.key), '');
+    A.eq('with every row present', built.count, 1);
+    A.eq('the failed cell is empty', at(cells(rows(built.text)[1]), victim.key), '');
   });
 
   A.group('12c the header and the body cannot disagree about width', () => {
@@ -108,9 +115,11 @@ module.exports = function (app) {
     // header, on both record types.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', INITIAL, { client: 'Acme', floor: '1', room: 'Kitchen' });
-    app.fn('addItemRecord')({ code: 'A1', mode: INITIAL, description: 'Kettle', cls: 'I' }, 'pass', '');
+    app.fn('addItemRecord')({ code: 'A1', mode: INITIAL, description: 'Kettle', cls: '1' }, 'pass', '');
     const r = rows(app.fn('buildCSV')(false).text);
-    A.eq('three rows', r.length, 3);
+    // ⚠ V6: TWO, NOT THREE. The location contributes no row of its own — its
+    // floor and room ride on the item below it instead (decision 8A).
+    A.eq('a header and one item row', r.length, 2);
     r.forEach((line, i) => {
       A.eq('row ' + i + ' is the full width', cells(line).length, COLS.length);
     });
@@ -120,50 +129,67 @@ module.exports = function (app) {
   // Where the id lands
   // -------------------------------------------------------------------------
 
-  A.group('12d decision 1A — the id stays in asset_id AND repeats into class', () => {
+  A.group('12d the asset id lands in ASSET ID and nowhere else', () => {
+    // ⚠ V6 RE-POINTED THIS GROUP. Under V5 the id was REPEATED into a class
+    // column (decision 1A) and this group proved the repeat. V6 stores the
+    // class as its own value (decision 1B), so the same group now guards the
+    // opposite: the id appears once, and the class column holds a class.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
-    app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: 'I' }, 'pass', '');
-    const c = exportCells(2);
-    A.eq('asset_id still carries it', at(c, 'asset_id'), 'A1');
-    A.eq('class_1 carries it too', at(c, 'class_1'), 'A1');
-    A.eq('class_2 is empty', at(c, 'class_2'), '');
-  });
-
-  A.group('12e decision 2B — visual and class are INDEPENDENT', () => {
-    // ⚠ THE CENTRAL DECISION OF THIS RELEASE. A Class I item inspected visually
-    // writes its id into class_1 AND visual, because the two columns answer two
-    // different questions. An implementation where visual "wins" and empties
-    // the class column passes a careless test and loses the class.
-    F.resetApp(app);
-    app.fn('addLocationRecord')('LOC-1', AUDIT, null);
-    app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: 'I', visual: true }, 'pass', '');
-    const c = exportCells(2);
-    A.eq('visual carries the id', at(c, 'visual'), 'A1');
-    A.eq('and class_1 STILL carries it', at(c, 'class_1'), 'A1');
-    A.eq('asset_id untouched', at(c, 'asset_id'), 'A1');
-  });
-
-  A.group('12f a tested item leaves the visual column empty', () => {
-    // Paired with 12e on purpose — see the note at the top of this file. On its
-    // own, "visual is empty" would pass on a build with no visual column at all.
-    F.resetApp(app);
-    app.fn('addLocationRecord')('LOC-1', AUDIT, null);
-    app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: 'II', visual: false }, 'pass', '');
-    const c = exportCells(2);
-    A.eq('visual empty', at(c, 'visual'), '');
-    A.eq('class_2 carries it', at(c, 'class_2'), 'A1');
-    A.eq('class_1 empty', at(c, 'class_1'), '');
-  });
-
-  A.group('12g a location row says nothing in any of the three', () => {
-    F.resetApp(app);
-    app.fn('addLocationRecord')('LOC-3', INITIAL, { client: 'Acme', floor: '2', room: 'Kitchen' });
+    app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: '1' }, 'pass', '');
     const c = exportCells(1);
-    A.eq('class_1 empty', at(c, 'class_1'), '');
-    A.eq('class_2 empty', at(c, 'class_2'), '');
-    A.eq('visual empty', at(c, 'visual'), '');
-    A.eq('but the location itself is there', at(c, 'location_id'), 'LOC-3');
+    A.eq('ASSET ID carries it', at(c, 'ASSET ID'), 'A1');
+    A.eq('CLASS carries a class, not an id', at(c, 'CLASS'), '1');
+    let repeats = 0;
+    COLS.forEach((k) => { if (at(c, k) === 'A1') repeats++; });
+    A.eq('the id appears in exactly one column', repeats, 1);
+  });
+
+  A.group('12e decision 3B — a visual inspection passes BOTH outcome columns', () => {
+    // ⚠ THE CENTRAL DECISION OF THIS RELEASE, and the one most likely to be
+    // "tidied up" by someone who reads the export and assumes the duplication
+    // is a bug. A visual-only item writes PASS into VISUAL *and* OPERATIONAL.
+    // What separates it from a full test is that the READINGS are empty — and
+    // nothing else in the file says so.
+    F.resetApp(app);
+    app.fn('addLocationRecord')('LOC-1', AUDIT, null);
+    app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: '1', visual: true }, 'pass', '');
+    const c = exportCells(1);
+    A.eq('VISUAL passes', at(c, 'VISUAL'), 'PASS');
+    A.eq('OPERATIONAL passes too', at(c, 'OPERATIONAL'), 'PASS');
+    A.eq('no earth bond reading', at(c, 'EARTH BOND'), '');
+    A.eq('no insulation reading', at(c, 'INSULATION'), '');
+    A.eq('and the class is still stated', at(c, 'CLASS'), '1');
+  });
+
+  A.group('12f a TESTED item is told apart only by its readings', () => {
+    // Paired with 12e on purpose — see the note at the top of this file. On its
+    // own, "the readings are filled" would pass on a build that had lost the
+    // visual flag entirely and was filling them for everything. The two groups
+    // travel the same path and differ in one input.
+    F.resetApp(app);
+    app.fn('addLocationRecord')('LOC-1', AUDIT, null);
+    app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: '1', visual: false }, 'pass', '');
+    const c = exportCells(1);
+    A.eq('VISUAL passes, same as a visual-only item', at(c, 'VISUAL'), 'PASS');
+    A.eq('OPERATIONAL passes, same again', at(c, 'OPERATIONAL'), 'PASS');
+    A.eq('but the earth bond reading is there', at(c, 'EARTH BOND'), app.val('EARTH_BOND_DEFAULT'));
+    A.eq('and the insulation reading with it', at(c, 'INSULATION'), app.val('INSULATION_DEFAULT'));
+  });
+
+  A.group('12g ⚠ a CLASS 2 item never carries an earth bond reading', () => {
+    // A Class II appliance has no earth to bond. A value here claims a test
+    // that cannot physically be performed — the single most consequential rule
+    // in the export, and the client's own sample is empty in every Class 2 row.
+    F.resetApp(app);
+    app.fn('addLocationRecord')('LOC-1', AUDIT, null);
+    app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: '2', visual: false }, 'pass', '');
+    const c = exportCells(1);
+    A.eq('earth bond empty', at(c, 'EARTH BOND'), '');
+    // ⚠ PAIRED. Without this, the group would pass on a build that had stopped
+    // writing readings altogether.
+    A.eq('but insulation IS recorded', at(c, 'INSULATION'), app.val('INSULATION_DEFAULT'));
+    A.eq('and it is genuinely a class 2 row', at(c, 'CLASS'), '2');
   });
 
   // -------------------------------------------------------------------------
@@ -173,21 +199,21 @@ module.exports = function (app) {
   A.group('12h setVisual and setClass write through to a scanned item', () => {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
-    act('setClass', 'II');
+    act('setClass', '2');
     act('setVisual', 'visual');
-    A.eq('class toggle moved', st.itemClass, 'II');
+    A.eq('class toggle moved', st.itemClass, '2');
     A.eq('visual toggle moved', st.visualMode, true);
     app.fn('routeScan')('A1');
     A.ok('an item is pending', !!st.pending);
-    A.eq('pending took the class', st.pending.cls, 'II');
+    A.eq('pending took the class', st.pending.cls, '2');
     A.eq('pending took visual', st.pending.visual, true);
     app.fn('commitResult')('pass', '');
     const rec = app.fn('findItemByCode')('A1', null);
-    A.eq('the record carries the class', rec.cls, 'II');
+    A.eq('the record carries the class', rec.cls, '2');
     A.eq('the record carries visual', rec.visual, true);
   });
 
-  A.group('12i ⚠ a phone that has never set a toggle boots as TESTED, Class I', () => {
+  A.group('12i ⚠ a phone that has never set a toggle boots as TESTED, Class 1', () => {
     // ⚠ M96 SURVIVED THE FIRST RUN, and the reason is worth keeping. This group
     // used to read st.visualMode straight after resetApp — but the FIXTURE sets
     // that field to false itself, so the assertion was reading the fixture's
@@ -197,7 +223,7 @@ module.exports = function (app) {
     F.resetApp(app);
     app.storage.clear();
     app.fn('load')();
-    A.eq('class defaults to I', st.itemClass, app.val('ITEM_CLASS_DEFAULT'));
+    A.eq('class defaults to 1', st.itemClass, app.val('ITEM_CLASS_DEFAULT'));
     A.eq('visual defaults OFF', st.visualMode, false);
     // And the opposite direction, so this cannot pass by the flag being absent:
     // a stored '1' must come back as true through the same path.
@@ -211,7 +237,7 @@ module.exports = function (app) {
     app.fn('routeScan')('A1');
     app.fn('commitResult')('pass', '');
     const rec = app.fn('findItemByCode')('A1', null);
-    A.eq('class I', rec.cls, 'I');
+    A.eq('class 1', rec.cls, '1');
     A.eq('not visual', rec.visual, false);
   });
 
@@ -224,22 +250,24 @@ module.exports = function (app) {
     A.eq('starts not visual', st.pending.visual, false);
     act('setVisual', 'visual');
     A.eq('the pending item followed', st.pending.visual, true);
-    act('setClass', 'II');
-    A.eq('and the class followed', st.pending.cls, 'II');
+    act('setClass', '2');
+    A.eq('and the class followed', st.pending.cls, '2');
     app.fn('commitResult')('pass', '');
-    const c = exportCells(2);
-    A.eq('the export got the corrected class', at(c, 'class_2'), 'A1');
-    A.eq('and the corrected visual', at(c, 'visual'), 'A1');
+    const c = exportCells(1);
+    A.eq('the export got the corrected class', at(c, 'CLASS'), '2');
+    // The corrected Visual shows as the ABSENCE of readings — under decision 3B
+    // that is the only place in the file it appears.
+    A.eq('and the corrected visual, as an empty insulation cell', at(c, 'INSULATION'), '');
   });
 
   A.group('12k the toggles survive a reload', () => {
     // Decision 7A. Goes through save + load rather than reading state, because
     // sticky-across-restarts is a claim about storage, not about a variable.
     F.resetApp(app);
-    act('setClass', 'II');
+    act('setClass', '2');
     act('setVisual', 'visual');
     app.fn('load')();
-    A.eq('class came back', st.itemClass, 'II');
+    A.eq('class came back', st.itemClass, '2');
     A.eq('visual came back', st.visualMode, true);
     act('setVisual', 'test');
     app.fn('load')();
@@ -253,7 +281,7 @@ module.exports = function (app) {
     A.eq('garbage', app.fn('normaliseItemClass')('III'), app.val('ITEM_CLASS_DEFAULT'));
     A.eq('empty', app.fn('normaliseItemClass')(''), app.val('ITEM_CLASS_DEFAULT'));
     A.eq('undefined', app.fn('normaliseItemClass')(undefined), app.val('ITEM_CLASS_DEFAULT'));
-    A.eq('a good one survives', app.fn('normaliseItemClass')('II'), 'II');
+    A.eq('a good one survives', app.fn('normaliseItemClass')('2'), '2');
   });
 
   // -------------------------------------------------------------------------
@@ -267,10 +295,10 @@ module.exports = function (app) {
     // inert on exactly the items most likely to need correcting.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
-    act('setClass', 'I');
-    app.fn('addItemRecord')({ code: 'A1', mode: INITIAL, description: 'Kettle', cls: 'II' }, 'pass', '');
+    act('setClass', '1');
+    app.fn('addItemRecord')({ code: 'A1', mode: INITIAL, description: 'Kettle', cls: '2' }, 'pass', '');
     st.mode = AUDIT;
-    act('setClass', 'I');
+    act('setClass', '1');
     app.fn('routeScan')('A1');
     // ⚠ THROUGH THE SHEET THE APP BUILT, not through a state field. `state`
     // declares a `confirmSheet` slot but openConfirmSheet() never assigns it —
@@ -281,7 +309,7 @@ module.exports = function (app) {
     A.ok('a confirm sheet was raised', !!dupSheet);
     A.ok('and it names the asset', dupSheet.innerHTML.indexOf('A1') !== -1);
     dupSheet.querySelector('#sheet-ok').onclick();
-    A.eq('the pending item took the TOGGLE, not the old record', st.pending.cls, 'I');
+    A.eq('the pending item took the TOGGLE, not the old record', st.pending.cls, '1');
     A.eq('but kept the description already captured', st.pending.description, 'Kettle');
   });
 
@@ -290,12 +318,15 @@ module.exports = function (app) {
     // had inherited one, which is the mistake this release corrects.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
-    act('setClass', 'II');
+    act('setClass', '2');
     app.fn('routeScan')('A1');
     app.fn('commitResult')('pass', '');
-    const c = exportCells(2);
-    A.eq('mode is audit', at(c, 'mode'), AUDIT);
-    A.eq('and it still landed in class_2', at(c, 'class_2'), 'A1');
+    const c = exportCells(1);
+    // ⚠ V6: `mode` IS NO LONGER A COLUMN. It is expressed by what the row
+    // carries instead — an audit row withholds its description (decision 9A) —
+    // so the claim is checked through that rather than dropped.
+    A.eq('an audit row states no description', at(c, 'DESCRIPTION'), '');
+    A.eq('and the class is still stated', at(c, 'CLASS'), '2');
   });
 
   // -------------------------------------------------------------------------
@@ -307,11 +338,12 @@ module.exports = function (app) {
     // and leave a full test recorded as visual-only for good.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
-    const rec = app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: 'I', visual: true }, 'pass', '');
+    const rec = app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: '1', visual: true }, 'pass', '');
     A.eq('starts visual', rec.visual, true);
     app.fn('updateRecordFields')(rec.id, { visual: false, result: 'pass' });
     A.eq('turned off', app.fn('recordById')(rec.id).visual, false);
-    A.eq('and the column emptied', at(exportCells(2), 'visual'), '');
+    // Un-ticking Visual means the item WAS tested, so the readings appear.
+    A.eq('and the readings arrived', at(exportCells(1), 'INSULATION'), app.val('INSULATION_DEFAULT'));
     app.fn('updateRecordFields')(rec.id, { visual: true, result: 'pass' });
     A.eq('and on again', app.fn('recordById')(rec.id).visual, true);
   });
@@ -319,7 +351,7 @@ module.exports = function (app) {
   A.group('12p a field the caller never mentions is left alone', () => {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
-    const rec = app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: 'I', visual: true }, 'pass', '');
+    const rec = app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: '1', visual: true }, 'pass', '');
     app.fn('updateRecordFields')(rec.id, { description: 'Kettle', result: 'pass' });
     A.eq('visual untouched', app.fn('recordById')(rec.id).visual, true);
     A.eq('description applied', app.fn('recordById')(rec.id).description, 'Kettle');
@@ -328,7 +360,7 @@ module.exports = function (app) {
   A.group('12q a correction un-exports its record, as ever', () => {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
-    const rec = app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: 'I' }, 'pass', '');
+    const rec = app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: '1' }, 'pass', '');
     app.fn('markExported')(st.records.slice());
     A.eq('exported', app.fn('recordById')(rec.id).exported, true);
     app.fn('updateRecordFields')(rec.id, { visual: true, result: 'pass' });
@@ -346,7 +378,7 @@ module.exports = function (app) {
     F.resetApp(app);
     const cleaned = app.fn('normaliseRecords')([
       { id: 'itm_old', type: 'item', mode: AUDIT, code: 'A1', ts: 1700000000000,
-        result: 'pass', description: 'Kettle', cls: 'I' },
+        result: 'pass', description: 'Kettle', cls: '1' },
     ]);
     A.eq('one record survived', cleaned.length, 1);
     A.eq('visual present and false', cleaned[0].visual, false);
@@ -370,7 +402,7 @@ module.exports = function (app) {
 
   A.group('12t both toggles paint, and only the set position is on', () => {
     F.resetApp(app);
-    act('setClass', 'II');
+    act('setClass', '2');
     act('setVisual', 'test');
     // ⚠ M111 SURVIVED THE FIRST RUN. This called renderScanToggles() directly,
     // which proves the builder works and says NOTHING about whether renderScan
@@ -382,8 +414,8 @@ module.exports = function (app) {
     A.ok('an inspection row', html.indexOf('setVisual') !== -1);
     A.ok('and they are on the screen, not just buildable',
       html.indexOf('togswitch') !== -1);
-    A.ok('Class II is pressed', /data-arg="II"[^>]*aria-pressed="true"/.test(html));
-    A.ok('Class I is not', /data-arg="I"[^>]*aria-pressed="false"/.test(html));
+    A.ok('Class 2 is pressed', /data-arg="2"[^>]*aria-pressed="true"/.test(html));
+    A.ok('Class 1 is not', /data-arg="1"[^>]*aria-pressed="false"/.test(html));
     A.ok('Test is pressed', /data-arg="test"[^>]*aria-pressed="true"/.test(html));
     A.ok('Visual is not', /data-arg="visual"[^>]*aria-pressed="false"/.test(html));
   });
@@ -417,11 +449,11 @@ module.exports = function (app) {
   A.group('12w the log marks a visual item and stays quiet on a tested one', () => {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
-    app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: 'I', visual: true }, 'pass', '');
+    app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, cls: '1', visual: true }, 'pass', '');
     A.ok('marked', app.fn('renderLogListHTML')().indexOf('Visual') !== -1);
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
-    app.fn('addItemRecord')({ code: 'A2', mode: AUDIT, cls: 'I', visual: false }, 'pass', '');
+    app.fn('addItemRecord')({ code: 'A2', mode: AUDIT, cls: '1', visual: false }, 'pass', '');
     A.ok('not marked', app.fn('renderLogListHTML')().indexOf('Visual') === -1);
   });
 
@@ -430,7 +462,7 @@ module.exports = function (app) {
     // gone, and the standing line that replaced it is there. Absence alone
     // would pass on a sheet that failed to render at all.
     F.resetApp(app);
-    act('setClass', 'II');
+    act('setClass', '2');
     act('setVisual', 'visual');
     app.fn('openNewItemSheet')('A1');
     const sheet = F.openSheetEl(app);
@@ -438,7 +470,7 @@ module.exports = function (app) {
     A.ok('the sheet element exists', !!sheet);
     A.ok('the sheet rendered', html.indexOf('A1') !== -1);
     A.ok('no class picker', html.indexOf('ni-class') === -1);
-    A.ok('but it states the class', html.indexOf('Class II') !== -1);
+    A.ok('but it states the class', html.indexOf('Class 2') !== -1);
     A.ok('and states visual', html.indexOf('visual inspection only') !== -1);
     A.ok('description still asked for', html.indexOf('ni-desc') !== -1);
   });
@@ -459,14 +491,14 @@ module.exports = function (app) {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
     const rec = app.fn('addItemRecord')(
-      { code: 'A1', mode: AUDIT, cls: 'I', visual: true }, 'pass', '');
+      { code: 'A1', mode: AUDIT, cls: '1', visual: true }, 'pass', '');
     A.eq('starts visual', rec.visual, true);
     const back = app.fn('replaceItemRecord')(
-      rec.id, { code: 'A1', mode: AUDIT, cls: 'I', visual: false }, 'pass', '');
+      rec.id, { code: 'A1', mode: AUDIT, cls: '1', visual: false }, 'pass', '');
     A.eq('a proper test clears it', back.visual, false);
-    A.eq('and the column empties', at(exportCells(2), 'visual'), '');
+    A.eq('and the readings arrive with it', at(exportCells(1), 'INSULATION'), app.val('INSULATION_DEFAULT'));
     const again = app.fn('replaceItemRecord')(
-      rec.id, { code: 'A1', mode: AUDIT, cls: 'I', visual: true }, 'pass', '');
+      rec.id, { code: 'A1', mode: AUDIT, cls: '1', visual: true }, 'pass', '');
     A.eq('and it can go back on', again.visual, true);
     A.eq('same record throughout', again.id, rec.id);
   });
@@ -485,7 +517,7 @@ module.exports = function (app) {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', INITIAL, { client: 'Acme', floor: '1', room: 'Corridor' });
     const rec = app.fn('addItemRecord')(
-      { code: 'A1', mode: INITIAL, description: 'Site Kettle', cls: 'I', visual: false }, 'pass', '');
+      { code: 'A1', mode: INITIAL, description: 'Site Kettle', cls: '1', visual: false }, 'pass', '');
 
     app.fn('openEditSheet')(rec.id, null);
     let sheet = F.openSheetEl(app);
@@ -545,7 +577,7 @@ module.exports = function (app) {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
     st.mode = INITIAL;
-    act('setClass', 'II');
+    act('setClass', '2');
     act('setVisual', 'visual');
     app.fn('openNewItemSheet')('A1');
     const sheet = F.openSheetEl(app);
@@ -553,12 +585,12 @@ module.exports = function (app) {
     sheet.querySelector('#ni-ok').onclick();
     A.ok('an item is pending', !!st.pending);
     A.eq('description taken from the box', st.pending.description, 'Kettle');
-    A.eq('class taken from the toggle', st.pending.cls, 'II');
+    A.eq('class taken from the toggle', st.pending.cls, '2');
     A.eq('visual taken from the toggle', st.pending.visual, true);
     app.fn('commitResult')('pass', '');
-    const c = exportCells(2);
-    A.eq('and it reached the file', at(c, 'visual'), 'A1');
-    A.eq('in the right class column', at(c, 'class_2'), 'A1');
+    const c = exportCells(1);
+    A.eq('and it reached the file as an empty insulation cell', at(c, 'INSULATION'), '');
+    A.eq('with the class the toggle was set to', at(c, 'CLASS'), '2');
   });
 
   A.group('12ab the stylesheet still makes Visual look different', () => {
@@ -581,14 +613,16 @@ module.exports = function (app) {
   });
 
   A.group('12ac ⚠ REORDERING THE CLIENT FILE IS SAFE — the V5 claim, proven', () => {
-    // The headline of this release: the column order lives in ONE place, so a
-    // reorder in config.js cannot desynchronise the header from the body. This
-    // reverses the whole spec at runtime, rebuilds, and checks every column
-    // still carries its own value under its own header.
+    // The headline of V5, and V6 is the release that cashed it in: nine of the
+    // fifteen columns moved and csv.js was not touched for the reorder. The
+    // column order lives in ONE place, so a reorder in config.js cannot
+    // desynchronise the header from the body. This reverses the whole spec at
+    // runtime, rebuilds, and checks every column still carries its own value
+    // under its own header.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-9', INITIAL, { client: 'Acme', floor: '2', room: 'Kitchen' });
     app.fn('addItemRecord')(
-      { code: 'A1', mode: INITIAL, description: 'Kettle', cls: 'II', visual: true }, 'fail', 'Damaged Lead');
+      { code: 'A1', mode: INITIAL, description: 'Kettle', cls: '2', visual: true }, 'fail', 'Damaged Lead');
 
     const original = SPEC.slice();
     SPEC.reverse();
@@ -597,14 +631,19 @@ module.exports = function (app) {
     const pick = (line, k) => cells(line)[keys.indexOf(k)];
 
     A.eq('the header followed the reorder', cells(r[0]), keys);
-    A.eq('asset_id still right', pick(r[2], 'asset_id'), 'A1');
-    A.eq('class_2 still right', pick(r[2], 'class_2'), 'A1');
-    A.eq('class_1 still empty', pick(r[2], 'class_1'), '');
-    A.eq('visual still right', pick(r[2], 'visual'), 'A1');
-    A.eq('result still right', pick(r[2], 'result'), 'fail');
-    A.eq('reason still right', pick(r[2], 'fail_reason'), 'Damaged Lead');
-    A.eq('room still on the location row', pick(r[1], 'room'), 'Kitchen');
-    A.eq('and the width is unchanged', cells(r[2]).length, original.length);
+    A.eq('ASSET ID still right', pick(r[1], 'ASSET ID'), 'A1');
+    A.eq('CLASS still right', pick(r[1], 'CLASS'), '2');
+    A.eq('VISUAL still right', pick(r[1], 'VISUAL'), 'FAIL');
+    A.eq('OPERATIONAL still right', pick(r[1], 'OPERATIONAL'), 'FAIL');
+    A.eq('NOTES still right', pick(r[1], 'NOTES'), 'Damaged Lead');
+    A.eq('DESCRIPTION still right', pick(r[1], 'DESCRIPTION'), 'Kettle');
+    // ⚠ V6: THE ROOM IS ON THE ITEM ROW NOW, not on a location row of its own.
+    // A reorder must carry the two context-dependent columns as safely as the
+    // rest — they are the only ones that read a second argument, so they are
+    // the ones a reorder could plausibly break.
+    A.eq('ROOM rode across on the item row', pick(r[1], 'ROOM'), 'Kitchen');
+    A.eq('FLOOR with it', pick(r[1], 'FLOOR'), '2');
+    A.eq('and the width is unchanged', cells(r[1]).length, original.length);
 
     SPEC.length = 0;
     original.forEach(c => SPEC.push(c));
