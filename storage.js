@@ -74,12 +74,21 @@ function normaliseRecord(r) {
     out.result = (r.result === 'pass' || r.result === 'fail') ? r.result : '';
     out.failReason = out.result === 'fail' ? cleanText(r.failReason, 120) : '';
     out.description = cleanText(r.description, 80);
-    out.cls = (CLASS_OPTIONS.indexOf(r.cls) !== -1) ? r.cls : '';
+    out.cls = normaliseRecordClass(r.cls);
     // V5. ⚠ STRICTLY `=== true`, not truthy. A record restored from an older
     // backup has no `visual` key at all, and every pre-V5 record was a full
     // test — so absent must mean false. Anything looser would let a stray
     // string from a hand-edited backup mark work as visual-only that was not.
     out.visual = r.visual === true;
+    // V6 — the readings. Plain strings; '<0.2' and '>19.99' do not parse and
+    // were never meant to. An absent one is an empty string, which is a
+    // legitimate value meaning no reading was taken.
+    out.earthBond = cleanText(r.earthBond, READING_MAX);
+    out.insulation = cleanText(r.insulation, READING_MAX);
+    // ⚠ THE CLASS 2 RULE APPLIES ON THE WAY IN TOO. A hand-edited backup, or
+    // one written by a version that got this wrong, must not be able to seat a
+    // Class II earth bond reading in state where the export would trust it.
+    if (out.cls === CLASS_NO_EARTH_BOND) out.earthBond = '';
     out.locationId = isNonEmptyString(r.locationId) ? r.locationId : '';
     out.locationCode = cleanText(r.locationCode, SCAN_MAX_LENGTH);
   } else {
@@ -176,11 +185,41 @@ function normaliseMode(v) {
   return (v === MODE_INITIAL) ? MODE_INITIAL : MODE_AUDIT;
 }
 
-// V5. An unrecognised value falls back to the default rather than to empty:
-// the toggle is a two-position switch and there is no third position for it to
-// show. A blank here would paint neither segment as on.
+// ---------------------------------------------------------------------------
+// V6 — THE CLASS MIGRATION (decision 1B)
+//
+// Every record written before V6 holds 'I' or 'II'. V6 stores '1' and '2',
+// which is what the client's own file contains, so the old form is translated
+// on the way in — on LOAD and on RESTORE alike, because both go through
+// normaliseRecord().
+//
+// ⚠ DO NOT DELETE THIS ONCE "EVERYBODY HAS UPGRADED". Backups are files. One
+// taken in May 2026 and restored in 2028 arrives holding Roman numerals, and
+// without this every record in it exports a blank class — on screen as well as
+// in the file, so there is nothing to notice until the client asks.
+//
+// ⚠ AN UNRECOGNISED VALUE ON A RECORD BECOMES EMPTY, not the default. A record
+// whose class was never captured must stay uncaptured; inventing Class 1 for it
+// would claim an earth bond test that nobody performed.
+function normaliseRecordClass(v) {
+  if (v === 'I') return '1';
+  if (v === 'II') return '2';
+  return (CLASS_OPTIONS.indexOf(v) !== -1) ? v : '';
+}
+
+// The TOGGLE's stored position, which is a different question. ⚠ HERE an
+// unrecognised value falls back to the DEFAULT rather than to empty: the toggle
+// is a two-position switch with no third position, and a blank would paint
+// neither segment as on.
 function normaliseItemClass(v) {
-  return (CLASS_OPTIONS.indexOf(v) !== -1) ? v : ITEM_CLASS_DEFAULT;
+  const migrated = normaliseRecordClass(v);
+  return migrated || ITEM_CLASS_DEFAULT;
+}
+
+// V6 — a reading is free text. Trimmed and capped, never parsed.
+function normaliseReading(v, fallback) {
+  const t = cleanText(v, READING_MAX);
+  return t || fallback;
 }
 
 // ---------------------------------------------------------------------------
@@ -195,6 +234,8 @@ function load() {
   // has no key at all, and absent must mean Test — see the note on VISUAL_KEY.
   state.visualMode = _lsGet(VISUAL_KEY) === '1';
   state.itemClass = normaliseItemClass(_lsGet(ITEM_CLASS_KEY));
+  state.earthBondValue = normaliseReading(_lsGet(EARTH_BOND_KEY), EARTH_BOND_DEFAULT);
+  state.insulationValue = normaliseReading(_lsGet(INSULATION_KEY), INSULATION_DEFAULT);
   state.failReasons = normaliseStringList(
     _parseJSON(_lsGet(FAIL_REASONS_KEY), null), makeDefaultFailReasons, 40);
   state.descriptions = normaliseStringList(
@@ -237,6 +278,8 @@ function savePrefs() {
   _lsSet(MODE_KEY, state.mode);
   _lsSet(VISUAL_KEY, state.visualMode ? '1' : '0');
   _lsSet(ITEM_CLASS_KEY, state.itemClass);
+  _lsSet(EARTH_BOND_KEY, state.earthBondValue || '');
+  _lsSet(INSULATION_KEY, state.insulationValue || '');
   _lsSet(THEME_KEY, state.theme);
   _lsSet(HAPTIC_KEY, state.haptic ? '1' : '0');
   _lsSet(SOUND_KEY, state.sound ? '1' : '0');

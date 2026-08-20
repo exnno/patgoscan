@@ -7,13 +7,13 @@
  * read in one place — that is what makes the backup file provably complete.
  */
 
-const APP_VERSION = 'V5';
+const APP_VERSION = 'V6';
 
 // The welcome modal key carries the version IN THE VALUE, never in the
 // identifier. A version-named identifier caused a white screen in the parent
 // app (PATGo v61) when one file was updated and another was not.
 const WELCOME_KEY = 'scan:welcome';
-const WELCOME_VERSION = 'V5';
+const WELCOME_VERSION = 'V6';
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -66,7 +66,20 @@ const SCAN_SPEED_KEY     = 'scan:scanSpeed';     // 'strict' | 'normal' | 'relax
 // inspection understates the work, and a visual recorded as a full test claims
 // work that was never done. The second is the dangerous direction.
 const VISUAL_KEY         = 'scan:visual';        // '1' | '0', DEFAULT OFF (= Test)
-const ITEM_CLASS_KEY     = 'scan:itemClass';     // 'I' | 'II', DEFAULT 'I'
+const ITEM_CLASS_KEY     = 'scan:itemClass';     // '1' | '2', DEFAULT '1'
+
+// V6 — the auto-filled test readings. PLAIN STRINGS, NOT NUMBERS, and that is
+// not laziness: '<0.2' and '>19.99' are what the client's file contains and
+// neither one parses. Anything that tried to treat these as measurements would
+// have to invent a format the client has never asked for.
+//
+// ⚠ THESE ARE THE VALUES WRITTEN ONTO NEW RECORDS, NOT A VIEW OF OLD ONES. A
+// reading is COPIED onto the record when the item is logged, so changing the
+// figure here in May does not rewrite what was recorded in April. That is the
+// whole point of decision 4B — the file has to say what was actually recorded
+// at the time, not what the setting happens to be on the day it is exported.
+const EARTH_BOND_KEY     = 'scan:earthBond';     // e.g. '<0.2'
+const INSULATION_KEY     = 'scan:insulation';    // e.g. '>19.99'
 
 // ---------------------------------------------------------------------------
 // Scanner tuning — measured, not guessed. Do not "tidy" these.
@@ -123,13 +136,34 @@ function makeDefaultFailReasons() {
   ];
 }
 
-// ⚠ V5: THIS LIST DRIVES THE SCAN SCREEN'S CLASS TOGGLE, and the toggle is a
-// two-position switch. Adding a third entry here does not just add an option —
-// it puts a third segment in a control sized for two, and it needs a matching
-// `class_N` column in CSV_COLUMNS or the new class exports as nothing at all.
+// ⚠ V6: THE VALUES ARE '1' AND '2', NOT 'I' AND 'II'. This is what the client's
+// own file contains and it is the STORED form, not a mapping applied on the way
+// out (decision 1B). Every record written before V6 holds the Roman form and is
+// migrated on load — see normaliseRecordClass() in storage.js. Reverting these
+// strings without reverting that migration would leave every existing record
+// exporting a blank class, on screen as well as in the file.
+//
+// ⚠ THE TOGGLE IS A TWO-POSITION SWITCH. Adding a third entry here does not
+// just add an option — it puts a third segment in a control sized for two.
 // Class III was dropped in V3 for its own reasons; this is the second reason.
-const CLASS_OPTIONS = ['I', 'II'];
-const ITEM_CLASS_DEFAULT = 'I';
+const CLASS_OPTIONS = ['1', '2'];
+const ITEM_CLASS_DEFAULT = '1';
+
+// ⚠ CLASS 2 HAS NO EARTH TO BOND. Named here rather than written as a bare '2'
+// at each of the three places that need it, because this is a fact about
+// appliances and not a coincidence of the option list.
+const CLASS_NO_EARTH_BOND = '2';
+
+// V6 readings. Seeds only — the live values are in state and editable in
+// Settings.
+const EARTH_BOND_DEFAULT = '<0.2';
+const INSULATION_DEFAULT = '>19.99';
+const READING_MAX = 20;
+
+// What the four outcome columns contain. Uppercase in the stored data of the
+// client's sample, not a display style applied to it.
+const CSV_PASS = 'PASS';
+const CSV_FAIL = 'FAIL';
 
 const MODE_AUDIT = 'audit';
 const MODE_INITIAL = 'initial';
@@ -201,43 +235,99 @@ const EXPORT_NUDGE_AT = 150;
 // mis-tap. It is edited here, in the GitHub web UI, on purpose.
 // ---------------------------------------------------------------------------
 const CSV_COLUMNS = [
-  { key: 'record_type', cell: (r) => (r.type === 'location' ? 'location' : 'item') },
-  { key: 'mode',        cell: (r) => r.mode || '' },
-  { key: 'asset_id',    cell: (r) => (r.type === 'item' ? r.code : '') },
-  { key: 'description', cell: (r) => (r.type === 'item' ? (r.description || '') : '') },
+  { key: 'ASSET ID', cell: (r) => r.code || '' },
+  { key: 'CLASS',    cell: (r) => r.cls || '' },
 
-  // V5 — the asset id repeated into a class column and a visual column
-  // (decisions 1A and 2B). ⚠ THE THREE BELOW ARE INDEPENDENT OF ONE ANOTHER.
-  // They answer two different questions — "what class is it" and "was it
-  // tested or only looked at" — so a Class I item inspected visually writes
-  // its id into class_1 AND visual. That is not a bug to tidy up later.
+  // THE FOUR OUTCOME COLUMNS — the four stages of a PAT test, and between them
+  // they carry everything the retired `result` and `fail_reason` columns used
+  // to say.
   //
-  // The two hedges Peter kept open are both one line each, here, and nowhere
-  // else in the app:
-  //   → 1B (id MOVES out of asset_id): change asset_id's cell to return ''.
-  //   → 2C (visual becomes a flag, not the id): change visual's cell to
-  //     return 'Y' instead of r.code.
-  { key: 'class_1', cell: (r) => (r.type === 'item' && r.cls === 'I') ? r.code : '' },
-  { key: 'class_2', cell: (r) => (r.type === 'item' && r.cls === 'II') ? r.code : '' },
-  { key: 'visual',  cell: (r) => (r.type === 'item' && r.visual === true) ? r.code : '' },
+  // ⚠ VISUAL AND OPERATIONAL ARE IDENTICAL BY DESIGN (decision 3B). A visual
+  // inspection writes PASS into both; so does a full test. What tells the two
+  // apart in the client's file is whether the READINGS below are filled — and
+  // nothing else. See the warning on INSULATION.
+  //
+  // ⚠ A FAIL WRITES FAIL INTO BOTH (decision 5B) and no attempt is made to
+  // guess which stage failed from the reason text. "Damaged Casing" is a visual
+  // failure and "Insulation Resistance" is not, but the list is editable in
+  // Settings and an engineer will eventually add one that maps to neither.
+  // Guessing wrong is worse than not guessing: the reason itself goes out
+  // intact in NOTES.
+  { key: 'VISUAL',      cell: (r) => csvOutcome(r) },
+  { key: 'OPERATIONAL', cell: (r) => csvOutcome(r) },
 
-  { key: 'result',      cell: (r) => (r.type === 'item' ? (r.result || '') : '') },
-  { key: 'fail_reason', cell: (r) => (r.type === 'item' ? (r.failReason || '') : '') },
+  // ⚠ EARTH BOND IS EMPTY FOR CLASS 2 AND THIS IS NOT A FORMATTING PREFERENCE.
+  // A Class II appliance has no earth to bond, so a value here claims a test
+  // that cannot physically be performed. The rule is enforced TWICE on purpose
+  // — once when the record is written (readingsFor() in log.js) and again here,
+  // on the way out — because a class corrected from 1 to 2 in the log would
+  // otherwise export a reading that was legitimate when it was recorded.
+  { key: 'EARTH BOND', cell: (r) => (r.cls === CLASS_NO_EARTH_BOND ? '' : (r.earthBond || '')) },
 
-  // THE BARCODE IS THE LOCATION ID. On a location row it is the location
-  // itself; on an item row it is the location the item was filed under, and it
-  // is authoritative — see the note in the V4 handoff about a moved item's row
-  // sitting above its location's row.
-  { key: 'location_id', cell: (r) => (r.type === 'location' ? r.code : (r.locationCode || '')) },
+  // ⚠ NEVER BLANK THIS FOR TIDINESS. Under decision 3B the readings are the
+  // only thing separating a visual inspection from a full test, and for a
+  // Class 2 item this column is the whole of that difference. Emptying it on a
+  // tested item silently reclassifies the item as visual-only, which understates
+  // work that was actually done. Mutation M124 breaks it in exactly this
+  // direction.
+  { key: 'INSULATION', cell: (r) => r.insulation || '' },
 
-  // Carried on the location row only. Repeating them on every item row would
-  // put the same three strings a few hundred times in a day's file.
-  { key: 'client', cell: (r) => (r.type === 'location' ? (r.client || '') : '') },
-  { key: 'floor',  cell: (r) => (r.type === 'location' ? (r.floor || '') : '') },
-  { key: 'room',   cell: (r) => (r.type === 'location' ? (r.room || '') : '') },
+  // ⚠ INITIAL ONLY (decision 9A). An audit row leaves this empty because the
+  // client's register already holds the description — and this is one of the
+  // two columns that now carry what the retired `mode` column used to say.
+  { key: 'DESCRIPTION', cell: (r) => (r.mode === MODE_INITIAL ? (r.description || '') : '') },
 
-  { key: 'engineer',   cell: (r) => r.engineer || '' },
-  { key: 'scanned_at', cell: (r) => stampLocal(r.ts) },
+  // THE BARCODE IS THE LOCATION ID, and it is the COPY stamped onto the item
+  // rather than a lookup through the pointer — see the note in log.js. An item
+  // whose location record was later deleted still exports the barcode it was
+  // genuinely scanned under.
+  { key: 'LOCATION ID', cell: (r) => r.locationCode || '' },
+
+  // ⚠ THE ONLY TWO COLUMNS THAT NEED MORE THAN THE ROW'S OWN RECORD, which is
+  // why cells take a second argument in V6. Sparse by design (decision 7A):
+  // they appear on the FIRST row of a newly initialised location IN THIS FILE
+  // and nowhere else. "In this file" is the whole of the correctness — see
+  // csvRowsForRecords() in csv.js.
+  { key: 'FLOOR', cell: (r, ctx) => csvLocationDescriptor(ctx, 'floor') },
+  { key: 'ROOM',  cell: (r, ctx) => csvLocationDescriptor(ctx, 'room') },
+
+  { key: 'DATE', cell: (r) => dateOnlyLocal(r.ts) },
+
+  // The fail reason, and nothing else (decision 11A).
+  { key: 'NOTES', cell: (r) => r.failReason || '' },
+
+  // ⚠ THE THIRTEENTH COLUMN, AND NOT PART OF THE CLIENT'S TWELVE (decision
+  // 12B). It is appended rather than inserted so their layout is untouched.
+  // The filename carries the engineer too, but filenames are lost the moment
+  // six files are merged into one sheet — and then nothing says who did what.
+  { key: 'ENGINEER', cell: (r) => r.engineer || '' },
 ];
 
-const BACKUP_VERSION = 1;
+// ---------------------------------------------------------------------------
+// Cell helpers
+//
+// These live here rather than in utils.js because they exist only to serve
+// CSV_COLUMNS above, and moving them away from it is how the next person ends
+// up writing a second copy of the same rule inline in a cell.
+// ---------------------------------------------------------------------------
+
+// ⚠ ONE FUNCTION FOR BOTH OUTCOME COLUMNS, called twice. Decision 3B says they
+// are identical, and writing the expression out twice is an invitation to
+// "fix" one of them.
+function csvOutcome(r) {
+  if (r.result === 'fail') return CSV_FAIL;
+  if (r.result === 'pass') return CSV_PASS;
+  return '';
+}
+
+// ⚠ TOLERATES A MISSING ctx. The harness calls cells directly in places, and a
+// cell that throws is a cell whose column comes out empty for every row of the
+// export — the guard in csv.js keeps the file going but says nothing.
+function csvLocationDescriptor(ctx, field) {
+  if (!ctx || ctx.firstForLocationInFile !== true) return '';
+  const loc = ctx.location;
+  if (!loc || loc.mode !== MODE_INITIAL) return '';
+  return loc[field] || '';
+}
+
+const BACKUP_VERSION = 2;

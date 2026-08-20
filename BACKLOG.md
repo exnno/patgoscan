@@ -8,19 +8,27 @@ things worth considering when the client's actual working day suggests them.
 
 ## Pending answers from the client
 
-- **Audited locations as their own CSV rows.** Included in V1. Trivial to drop
-  if their importer objects to them.
+*(Nothing outstanding. Both long-running questions closed in V6.)*
 
-## Under consideration
+## Closed in V6
 
-- **Confirm the final column layout with the client.** ⚠ CARRIED OUT OF V5 AND
-  STILL OPEN. V5 shipped `class_1`, `class_2` and `visual` on Peter's reading of
-  what they want, with the single `class` column retired. The layout is expected
-  to change. It is now a one-place edit — whole lines in `CSV_COLUMNS`
-  (config.js) — and the two hedges left open are one line each, written into the
-  file: **1B** (id moves out of `asset_id`) is emptying that column's cell, and
-  **2C** (visual becomes a flag rather than the id) is returning `'Y'` instead of
-  `r.code`. Nothing else in the app needs touching for either.
+- **~~Audited locations as their own CSV rows.~~** ✅ ANSWERED AND DROPPED. Open
+  since V1. The client's own sample file has no location rows at all — every row
+  is an asset, with the location's barcode repeated on each. A location's floor
+  and room now ride on the first item row beneath it. ⚠ THE KNOWN COST: a
+  location visited and found empty leaves no trace in the file. Accepted
+  deliberately (decision 8A); if it ever needs reversing, the shape to revisit is
+  8B — an asset-less row for a location with nothing under it.
+- **~~Confirm the final column layout with the client.~~** ✅ ANSWERED. Carried
+  through V4 and V5. The client supplied their finalised twelve columns plus a
+  worked sample, and V6 ships them. Both V5 hedges are resolved: **1B** was
+  taken (the class is stored as its own value, `1` / `2`), and the `visual`
+  column is gone entirely — a visual inspection is now expressed by empty
+  readings rather than by a column of its own.
+
+  ⚠ THE V5 CLAIM PAID FOR ITSELF. Nine of fifteen columns moved and `csv.js` was
+  not touched for the reorder — only for the new `(record, ctx)` cell signature
+  that FLOOR and ROOM needed. Test 12ac proves the property still holds.
 
 ## Queued from V2
 
@@ -37,7 +45,10 @@ things worth considering when the client's actual working day suggests them.
   along the lines of the location bar's. Its own release, and worth doing if the
   picker turns out to be slow on a big site. ⚠ Considered for V5 and dropped —
   V5 changed the client's column layout, and a data-shape release and a new
-  armed scanner mode do not belong in the same upload.
+  armed scanner mode do not belong in the same upload. ⚠ HELD OUT OF V6 FOR THE
+  SAME REASON — V6 was the bigger data-shape release of the two. It is now the
+  strongest candidate for V7: self-contained, no open questions, and nothing
+  ahead of it in the queue.
 - **Naming an audit location retrospectively.** Already possible — tap it in the
   log and fill in Client / Floor / Room — but nothing prompts for it, and the V4
   picker is the first place where an unnamed location visibly costs something.
@@ -49,9 +60,10 @@ things worth considering when the client's actual working day suggests them.
 ⚠ **THESE FOUR ARE ONE PIECE OF WORK, NOT FOUR.** Sessions is the spine and the
 other three sit on it; building any of them first means building a private
 version of sessions inside it and throwing that away later. This is also the
-first item on the list that genuinely changes the storage shape — it is the
-release where `backupVersion` finally moves off 1, which is reason enough not to
-bundle it with anything else.
+first item on the list that genuinely changes the storage SHAPE. ⚠ V6 MOVED
+`backupVersion` TO 2 for the class value change (`I`/`II` → `1`/`2`), so this
+group will be spending the move to 3 — the reasoning is unchanged, it just
+starts from a different number.
 
 - **Work saved as sessions**, as PATGo does it. One continuous log per phone is
   what V1 chose and it has held, but everything below needs a boundary to point
@@ -66,19 +78,24 @@ bundle it with anything else.
   CROSS-ENGINEER case, which is the merge problem wearing a different hat. Do
   not rebuild the local warning.
 
-## Raised in V5 — small and independent
+## Raised in V5 — small and independent — BOTH SHIPPED IN V6
 
-Both are cheap, neither depends on sessions, and either could ride along with a
-small release or be a V5.1 on its own.
+- **~~A quick view of the last item on the entry screen.~~** ✅ SHIPPED V6, AND
+  IT IS ON TRIAL. It sits at the FOOT of the scan screen and "Discard this scan"
+  was left exactly where it was — folding the two together would have made
+  removing the quick view destructive, and the point of a trial is that it comes
+  out cleanly. Two controls, not three: delete and undo are the same action when
+  the record is the last one.
 
-- **A quick view of the last item on the entry screen**, with delete, undo and
-  edit buttons. ⚠ Worth deciding first whether this replaces the "Discard this
-  scan" button or sits alongside it — two ways to unsay the last thing you did,
-  a thumb's width apart, on the screen where FAIL also lives.
-- **Totals on the log view.** The scan screen already carries today's pass /
-  fail / location counts; this is the same idea over the whole log rather than
-  the day, and it should say which it is counting or it will be read as the
-  other one.
+  ⚠ IF IT IS PULLED, IT COMES OUT IN THREE EDITS — `renderLastItem()` in
+  render.js, the two actions in dispatch.js, the `.lastitem` block in styles.css
+  — and nothing else on the screen moves. Keep it that way.
+
+  ⚠ THE LIKELIEST REASON IT FAILS: on a smaller phone it sits below the fold, so
+  confirming a scan costs a scroll. That is a placement problem, not an idea
+  problem — worth trying it above the counts before abandoning it.
+- **~~Totals on the log view.~~** ✅ SHIPPED V6, labelled "all time" so it cannot
+  be read as the scan screen's daily strip.
 
 ## Worth building if the job grows
 

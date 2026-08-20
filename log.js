@@ -13,7 +13,8 @@
  *               client, floor, room }          ← client/floor/room: initials only
  *
  *   item      { id, type:'item', mode, code, ts, engineer, exported,
- *               result, failReason, description, cls,
+ *               result, failReason, description, cls, visual,
+ *               earthBond, insulation,
  *               locationId, locationCode }
  *
  * THE STICKY LOCATION. Scanning a location sets `state.currentLocationId` and it
@@ -249,11 +250,44 @@ function addLocationRecord(code, mode, fields) {
   return rec;
 }
 
+// ---------------------------------------------------------------------------
+// V6 — the auto-filled readings (decision 4B)
+//
+// ⚠ THE READING IS COPIED ONTO THE RECORD, NOT DERIVED AT EXPORT. That is the
+// whole of 4B: the file has to report what was recorded at the time, so
+// changing the figure in Settings in May must not rewrite April's work. It also
+// makes the reading editable per record in the log, which a derived value could
+// never be.
+//
+// ⚠ CLASS 2 GETS NO EARTH BOND. Enforced here AND again in the EARTH BOND cell
+// in config.js, because a class corrected from 1 to 2 in the log would leave a
+// reading behind that was perfectly legitimate when it was written.
+//
+// ⚠ NO READINGS ON A VISUAL OR ON A FAIL (decisions 3B and 6A). For a visual
+// this is the ONLY thing that marks the row as an inspection rather than a
+// test — VISUAL and OPERATIONAL say PASS either way.
+function readingsFor(cls, visual, result) {
+  if (visual === true || result !== 'pass') return { earthBond: '', insulation: '' };
+  return {
+    earthBond: (cls === CLASS_NO_EARTH_BOND) ? '' : cleanText(state.earthBondValue, READING_MAX),
+    insulation: cleanText(state.insulationValue, READING_MAX),
+  };
+}
+
 // Items. Called only once a result exists — see the note on `state.pending` in
 // state.js for why a scanned-but-unjudged item is not written.
 function addItemRecord(pending, result, failReason) {
   if (!pending || !pending.code) return null;
   const loc = currentLocation();
+  // ⚠ V6: SETTLED BEFORE THE LITERAL, not patched on afterwards. The readings
+  // depend on the class, the inspection type and the result that are about to
+  // be written, and the record's key order has to match normaliseRecord()'s or
+  // a save/load round trip stops being byte-identical — which is the cheapest
+  // check there is that persistence is lossless.
+  const cls = (CLASS_OPTIONS.indexOf(pending.cls) !== -1) ? pending.cls : '';
+  const visual = pending.visual === true;
+  const outcome = result === 'fail' ? 'fail' : 'pass';
+  const readings = readingsFor(cls, visual, outcome);
   const rec = {
     id: uid('itm'),
     type: 'item',
@@ -262,16 +296,18 @@ function addItemRecord(pending, result, failReason) {
     ts: Date.now(),
     engineer: state.engineer || '',
     exported: false,
-    result: result === 'fail' ? 'fail' : 'pass',
-    failReason: result === 'fail' ? cleanText(failReason, 120) : '',
+    result: outcome,
+    failReason: outcome === 'fail' ? cleanText(failReason, 120) : '',
     description: cleanText(pending.description, 80),
-    cls: (CLASS_OPTIONS.indexOf(pending.cls) !== -1) ? pending.cls : '',
+    cls: cls,
     // V5. ⚠ TAKEN FROM THE PENDING ITEM, NOT FROM state.visualMode. The pending
     // item captured the toggle at scan time, and the toggle can be changed
     // while an item waits for a result. Reading the live toggle here would
     // record the position it ended up in rather than the one that was showing
     // on screen when PASS was pressed.
-    visual: pending.visual === true,
+    visual: visual,
+    earthBond: readings.earthBond,
+    insulation: readings.insulation,
     locationId: loc ? loc.id : '',
     locationCode: loc ? loc.code : '',
   };
@@ -302,6 +338,13 @@ function replaceItemRecord(id, pending, result, failReason) {
   rec.visual = pending.visual === true;
   rec.locationId = loc ? loc.id : rec.locationId;
   rec.locationCode = loc ? loc.code : rec.locationCode;
+  // V6. ⚠ RE-DERIVED, NOT PRESERVED. This path is a re-scan of the same asset —
+  // a correction of one event — and the class or the inspection type may have
+  // changed with it. Keeping the old readings here would leave an earth bond
+  // figure on an item just corrected to Class 2.
+  const readings = readingsFor(rec.cls, rec.visual, rec.result);
+  rec.earthBond = readings.earthBond;
+  rec.insulation = readings.insulation;
   rec.exported = false;    // changed since export — must go out again
   saveRecords();
   learnDescription(rec.description);
@@ -332,6 +375,41 @@ function updateRecordFields(id, fields) {
     // ⚠ AN UNRESOLVABLE ID IS IGNORED, NOT WRITTEN. Clearing the code to match
     // would throw away the barcode the item was genuinely scanned under, which
     // is the one thing that survives a deleted location on purpose.
+    // V6 — the readings are editable from the log (decision 4B). ⚠ TYPED, NOT
+    // RE-DERIVED. Unlike the re-scan path above, an edit here is the engineer
+    // stating the figure, so an EMPTY STRING IS A REAL ANSWER — it is how a
+    // reading recorded by mistake is removed. Guarding on truthiness would make
+    // the field one-way.
+    if (typeof fields.earthBond === 'string') rec.earthBond = cleanText(fields.earthBond, READING_MAX);
+    if (typeof fields.insulation === 'string') rec.insulation = cleanText(fields.insulation, READING_MAX);
+
+    // ⚠ TURNING VISUAL OFF MUST BRING THE READINGS BACK, and this is the whole
+    // reason the rule lives in the model and not only in the edit sheet.
+    //
+    // Under decision 3B, VISUAL and OPERATIONAL say PASS for an inspection and
+    // for a full test alike — an EMPTY READING is the only thing in the
+    // client's file that tells the two apart. So an item corrected from
+    // visual-only to tested, and left with the empty readings it had as a
+    // visual, still exports as an inspection. The correction would appear to
+    // have worked on screen and changed nothing in the file, which understates
+    // work that was actually done.
+    //
+    // ⚠ ONLY WHEN THERE IS NOTHING THERE. A figure the engineer typed is an
+    // answer and is never overwritten — this seeds a gap, it does not correct a
+    // value.
+    if (rec.visual !== true && rec.result === 'pass' && !rec.earthBond && !rec.insulation) {
+      const seeded = readingsFor(rec.cls, false, 'pass');
+      rec.earthBond = seeded.earthBond;
+      rec.insulation = seeded.insulation;
+    }
+    // ⚠ AND THE VISUAL RULE THE OTHER WAY. A record marked visual carries no
+    // readings however they got onto it — the safe direction, but it still has
+    // to be true or the file contradicts itself.
+    if (rec.visual === true) { rec.earthBond = ''; rec.insulation = ''; }
+    // ⚠ AND THEN THE CLASS RULE WINS OVER BOTH. A Class 2 item cannot carry an
+    // earth bond reading however it got there, including by being typed in.
+    if (rec.cls === CLASS_NO_EARTH_BOND) rec.earthBond = '';
+
     if (isNonEmptyString(fields.locationId) && fields.locationId !== rec.locationId) {
       const loc = locationRecordById(fields.locationId);
       if (loc) {
@@ -488,6 +566,39 @@ function suggestDescriptions(query) {
 // ---------------------------------------------------------------------------
 // Counts for the scan screen
 // ---------------------------------------------------------------------------
+// V6 (13D) — the last item recorded, for the quick view at the foot of the scan
+// screen. Newest by timestamp rather than last in the array: an edited record
+// keeps its original position, and the array order is insertion order.
+//
+// ⚠ ITEMS ONLY. A location scanned between two assets is not "the last thing
+// you recorded" in the sense the engineer means when they glance down to check
+// what just went in.
+function lastItemRecord() {
+  let best = null;
+  for (let i = 0; i < state.records.length; i++) {
+    const r = state.records[i];
+    if (r.type !== 'item') continue;
+    if (!best || byNewest(r, best) < 0) best = r;
+  }
+  return best;
+}
+
+// V6 (13D) — totals across the WHOLE log, not the day.
+//
+// ⚠ THIS IS A DIFFERENT NUMBER FROM todayCounts() BELOW AND THE LABEL MUST SAY
+// SO. Two count strips that look identical and disagree is worse than one, and
+// the day's figures are already on the scan screen.
+function logTotals() {
+  let pass = 0, fail = 0, locs = 0;
+  for (let i = 0; i < state.records.length; i++) {
+    const r = state.records[i];
+    if (r.type === 'location') { locs++; continue; }
+    if (r.result === 'fail') fail++;
+    else if (r.result === 'pass') pass++;
+  }
+  return { pass: pass, fail: fail, locations: locs, total: pass + fail };
+}
+
 function todayCounts() {
   const start = new Date();
   start.setHours(0, 0, 0, 0);

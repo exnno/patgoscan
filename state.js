@@ -35,7 +35,14 @@ let state = {
   // the wrong position they misfile every scan until somebody notices, which is
   // why they are on the pending panel as well as the top of the screen.
   visualMode: false,         // false = Test (DEFAULT), true = Visual
-  itemClass: ITEM_CLASS_DEFAULT,   // 'I' | 'II'
+  itemClass: ITEM_CLASS_DEFAULT,   // '1' | '2'
+
+  // V6 — the readings copied onto a new record. ⚠ THESE ARE UP HERE WITH THE
+  // TOGGLES AND NOT DOWN IN PREFERENCES for the same reason: they decide what
+  // is written into the client's file. Theme and haptics change how the app
+  // feels; these change the data.
+  earthBondValue: EARTH_BOND_DEFAULT,
+  insulationValue: INSULATION_DEFAULT,
 
   failReasons: [],
   descriptions: [],           // LEARNED, feeds the dropdown only

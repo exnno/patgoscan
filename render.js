@@ -253,8 +253,50 @@ function renderScan() {
         ${unexportedCount()} records not exported yet — tap to export
       </div>` : ''}
 
+      ${renderLastItem()}
+
     </main>
     ${renderNav('scan')}
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// V6 (13D) — THE LAST ITEM QUICK VIEW
+//
+// ⚠ ONE SELF-CONTAINED BLOCK, ON PURPOSE. This function, the two actions in
+// dispatch.js, and the .lastitem rules in styles.css are the whole of it, and
+// nothing else calls into them. It is shipped as a TRIAL — if it does not earn
+// its place it comes out in three edits and nothing else on the screen moves.
+// That is why it does not share a helper with the discard path and why
+// "Discard this scan" is untouched.
+//
+// ⚠ IT SITS AT THE FOOT OF THE SCREEN AND THAT IS THE SAFETY ARGUMENT. A
+// destructive control a full screen away from FAIL is not the mis-tap risk that
+// the same control beside FAIL would be. Moving this block up is not a layout
+// preference; it changes what a fumbled thumb can do.
+//
+// ⚠ TWO CONTROLS, NOT THREE. Delete and undo are the same action when the
+// record in question is the last one, and shipping both would be two buttons
+// that do one thing — the engineer would have to work out which. Undo removes
+// it; Edit opens the same sheet the log uses.
+function renderLastItem() {
+  const rec = lastItemRecord();
+  if (!rec) return '';
+  const bits = [rec.description, rec.cls ? 'Class ' + rec.cls : '',
+    rec.visual === true ? 'Visual' : '']
+    .filter(isNonEmptyString).join(' · ');
+  return `
+  <div class="lastitem">
+    <span class="lastitem-label">Last recorded</span>
+    <div class="lastitem-main">
+      <span class="lastitem-code">${escapeHTML(rec.code)}</span>
+      <span class="lastitem-result is-${escapeHTML(rec.result || 'none')}">${escapeHTML((rec.result || '').toUpperCase())}</span>
+    </div>
+    ${bits ? `<span class="lastitem-sub">${escapeHTML(bits)}</span>` : ''}
+    <div class="lastitem-acts">
+      <button type="button" class="linkbtn" data-action="editLastItem">Edit</button>
+      <button type="button" class="linkbtn is-danger" data-action="undoLastItem">Undo</button>
+    </div>
   </div>`;
 }
 
@@ -269,9 +311,26 @@ function renderLog() {
       <input type="text" id="log-search" class="field" placeholder="Search asset or location"
              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
              data-input-action="logSearch" value="${escapeHTML(state.logSearch)}">
+      ${renderLogTotals()}
       <div id="log-list">${renderLogListHTML()}</div>
     </main>
     ${renderNav('log')}
+  </div>`;
+}
+
+// V6 (13D). ⚠ THE LABEL SAYS "ALL TIME" AND IT IS NOT DECORATION. The scan
+// screen carries a strip of the same shape holding TODAY's figures, and two
+// identical-looking strips that disagree is worse than having neither. The word
+// is what makes the difference readable.
+function renderLogTotals() {
+  const t = logTotals();
+  if (!t.total && !t.locations) return '';
+  return `
+  <div class="counts counts--log">
+    <span><b>${t.pass}</b> pass</span>
+    <span><b>${t.fail}</b> fail</span>
+    <span><b>${t.locations}</b> locations</span>
+    <span class="counts-note">all time</span>
   </div>`;
 }
 
@@ -346,6 +405,17 @@ function renderSettings() {
       ${link('Barcode scanner', 'settingsScanner', state.scannerEnabled ? 'On' : 'Off')}
       ${link('Fail reasons and descriptions', 'settingsLists', state.failReasons.length + ' fail reasons')}
       ${link('Export and backup', 'settingsBackup', unexportedCount() + ' not exported')}
+
+      <h2 class="sec">Readings</h2>
+      <button type="button" class="row" data-action="editEarthBond">
+        <span class="row-main">Earth bond</span>
+        <span class="row-sub">${escapeHTML(state.earthBondValue || 'Not set')} · Class 1 only</span>
+      </button>
+      <button type="button" class="row" data-action="editInsulation">
+        <span class="row-main">Insulation</span>
+        <span class="row-sub">${escapeHTML(state.insulationValue || 'Not set')}</span>
+      </button>
+      <p class="muted small">Written onto each item as you log it. Changing them here does not alter anything already recorded — correct those in the log.</p>
 
       <h2 class="sec">Appearance</h2>
       <div class="rowline">
@@ -504,9 +574,9 @@ function renderAbout() {
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V6</b> — the export now matches the client's own layout: one row per asset, with separate columns for the visual, operational, earth bond and insulation results. Earth bond and insulation are filled in for you from figures you set in Settings, and you can correct either on any item from the log. Class is now written as 1 and 2. A Class 2 item never carries an earth bond reading. The scan screen shows the last thing you recorded at the bottom, so you can check it or undo it without opening the log, and the log now carries running totals.</p>
       <p class="muted small"><b>V5</b> — two switches now sit under the location bar and stay where you put them: <b>Class</b> (I or II) and <b>Test or Visual</b>. They apply to everything you scan in both modes, so a run of the same kind of appliance is set once rather than answered item by item. New items no longer ask for a class. An item recorded as Visual is called out on screen before you pass it and again in the log. The export gained separate columns for class and for visual inspections.</p>
       <p class="muted small"><b>V4</b> — an item logged in the wrong place can now be moved: tap it in the log and change its location. The picker shows each location's time, how many items you did there and what they were, so a bare barcode is still recognisable. Correcting an item also gets the Quick Pick buttons and the description suggestions the new item sheet has.</p>
-      <p class="muted small"><b>V3</b> — the boxes that ask you to type something no longer jump about when the keyboard comes up. They now sit above the keyboard with their buttons reachable, instead of behind it.</p>
 
       <p class="muted small">© 2026 Peter Birchley. All rights reserved.</p>
     </main>
@@ -881,6 +951,12 @@ function openEditSheet(id, draft) {
     const curVis = (typeof d.visual === 'boolean') ? d.visual : (rec.visual === true);
     const curRes = (typeof d.result === 'string') ? d.result : rec.result;
     const curReason = (typeof d.failReason === 'string') ? d.failReason : rec.failReason;
+    // V6 — the readings join the draft for the same reason everything else did:
+    // this sheet has two round trips out to other sheets and opening either
+    // destroys it. A field left out of the snapshot is a field silently
+    // reverted the moment the engineer taps Change.
+    const curEarth = (typeof d.earthBond === 'string') ? d.earthBond : (rec.earthBond || '');
+    const curIns = (typeof d.insulation === 'string') ? d.insulation : (rec.insulation || '');
 
     // V4: the location is now changeable, and the draft carries the PICKED one
     // — see the note on locationLineFor() in log.js. It became a .reasonrow
@@ -925,6 +1001,22 @@ function openEditSheet(id, draft) {
         <button type="button" class="class-opt${curRes === 'pass' ? ' is-on' : ''}" data-res="pass">PASS</button>
         <button type="button" class="class-opt${curRes === 'fail' ? ' is-on' : ''}" data-res="fail">FAIL</button>
       </div>
+      <label class="lbl">Readings</label>
+      <div class="readrow">
+        <div class="readcell">
+          <span class="readcell-label">Earth bond</span>
+          <input type="text" id="ed-earth" class="field" value="${escapeHTML(curEarth)}"
+                 autocomplete="off" autocapitalize="off" spellcheck="false"
+                 ${(curVis || curCls === CLASS_NO_EARTH_BOND) ? 'disabled' : ''}>
+        </div>
+        <div class="readcell">
+          <span class="readcell-label">Insulation</span>
+          <input type="text" id="ed-ins" class="field" value="${escapeHTML(curIns)}"
+                 autocomplete="off" autocapitalize="off" spellcheck="false"
+                 ${curVis ? 'disabled' : ''}>
+        </div>
+      </div>
+      <p class="muted small">Blank means no reading was taken — that is what marks a row as a visual inspection rather than a full test.</p>
       <div class="reasonrow${curRes === 'fail' ? '' : ' is-hidden'}" id="ed-reasonrow">
         <span class="reasonrow-label">Fail reason</span>
         <span class="reasonrow-value" id="ed-reasontext">${escapeHTML(curReason || 'Not set')}</span>
@@ -961,6 +1053,8 @@ function openEditSheet(id, draft) {
       result: res,
       failReason: reason,
       locationId: locId,
+      earthBond: sheet.querySelector('#ed-earth').value,
+      insulation: sheet.querySelector('#ed-ins').value,
     });
 
     // V4. Same shape as askReason() below: snapshot, leave, come home.
@@ -1056,12 +1150,37 @@ function openEditSheet(id, draft) {
       const b = e.target.closest('.class-opt'); if (!b) return;
       cls = b.getAttribute('data-cls');
       sheet.querySelectorAll('#ed-class .class-opt').forEach(x => x.classList.toggle('is-on', x === b));
+      // ⚠ V6: THE EARTH BOND FIELD FOLLOWS THE CLASS, LIVE. Class II has no
+      // earth to bond, so switching to it here empties and disables the field
+      // rather than leaving a figure on screen that Save would silently drop.
+      // Seeing the value disappear is the point — it is the moment the engineer
+      // learns the rule.
+      const earthEl = sheet.querySelector('#ed-earth');
+      if (cls === CLASS_NO_EARTH_BOND) { earthEl.value = ''; earthEl.disabled = true; }
+      else { earthEl.disabled = false; }
     });
 
     sheet.querySelector('#ed-visual').addEventListener('click', (e) => {
       const b = e.target.closest('.class-opt'); if (!b) return;
       vis = b.getAttribute('data-vis') === '1';
       sheet.querySelectorAll('#ed-visual .class-opt').forEach(x => x.classList.toggle('is-on', x === b));
+      // ⚠ V6: THE READINGS FOLLOW THE INSPECTION TYPE, LIVE, and the engineer
+      // has to SEE it happen. Under decision 3B an empty reading is the only
+      // thing that marks a row as an inspection rather than a test, so a switch
+      // to Visual that left figures on screen would be showing a row the file
+      // will not contain. updateRecordFields() enforces the same rule on save —
+      // this is so the sheet does not lie in the meantime.
+      const earthEl = sheet.querySelector('#ed-earth');
+      const insEl = sheet.querySelector('#ed-ins');
+      if (vis) {
+        earthEl.value = ''; insEl.value = '';
+      } else if (!earthEl.value && !insEl.value) {
+        // Seeds a gap, never overwrites a figure the engineer typed.
+        insEl.value = state.insulationValue || '';
+        if (cls !== CLASS_NO_EARTH_BOND) earthEl.value = state.earthBondValue || '';
+      }
+      earthEl.disabled = vis || cls === CLASS_NO_EARTH_BOND;
+      insEl.disabled = vis;
     });
 
     sheet.querySelector('#ed-result').addEventListener('click', (e) => {
@@ -1098,6 +1217,8 @@ function openEditSheet(id, draft) {
         result: res,
         failReason: reason,
         locationId: locId,
+        earthBond: sheet.querySelector('#ed-earth').value,
+        insulation: sheet.querySelector('#ed-ins').value,
       });
       closeSheet(); showToast('Saved'); render();
     };

@@ -310,6 +310,49 @@ li { margin-bottom: 8px; }
   background: var(--accent); color: #fff; font-weight: 600; font-size: 15px;
 }
 
+/* @@ V6 last item quick view ---------------------------------------------
+   ⚠ ONE SELF-CONTAINED BLOCK. This rule set, renderLastItem() in render.js and
+   the two actions in dispatch.js are the whole feature. It is a trial — if it
+   does not earn its place, all three come out together and nothing else on the
+   scan screen moves. Do not fold these rules into .pending or .counts.
+
+   ⚠ IT IS DELIBERATELY QUIET. Muted border, no fill, subordinate to the verdict
+   buttons above it. It sits at the foot of the screen and must never compete
+   with PASS and FAIL for a thumb. */
+.lastitem {
+  display: flex; flex-direction: column; gap: 2px;
+  margin-top: 18px; padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--bg-alt);
+}
+.lastitem-label {
+  font-size: 12px; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ink-soft);
+}
+.lastitem-main { display: flex; align-items: baseline; gap: 10px; }
+.lastitem-code {
+  font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+.lastitem-result { font-size: 13px; font-weight: 700; }
+.lastitem-result.is-pass { color: var(--pass); }
+.lastitem-result.is-fail { color: var(--fail); }
+.lastitem-sub { font-size: 14px; color: var(--ink-soft); }
+.lastitem-acts { display: flex; gap: 18px; margin-top: 2px; }
+
+/* @@ V6 readings on the edit sheet --------------------------------------- */
+.readrow { display: flex; gap: 10px; }
+.readcell { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.readcell-label { font-size: 13px; color: var(--ink-soft); }
+/* ⚠ A DISABLED EARTH BOND FIELD MUST LOOK DISABLED. It is disabled only for
+   Class 2, where an earth bond reading is not a thing that exists — if it reads
+   as merely empty, the engineer tries to type in it and learns nothing. */
+.readcell .field:disabled { opacity: .45; cursor: not-allowed; }
+
+/* The log's all-time strip. Same shape as the scan screen's daily one on
+   purpose — it is the same kind of information — but the "all time" note is
+   what stops the two being read as the same number. */
+.counts--log { padding-top: 4px; padding-bottom: 10px; }
+
 /* @@ rows --------------------------------------------------------------- */
 .row {
   display: block; width: 100%; text-align: left; position: relative;

@@ -12,10 +12,15 @@
  * not a special case in the builder — the moment the order exists in two
  * places, reordering the client's file stops being safe.
  *
- * ONE FILE, ONE ROW PER RECORD (decision 3B). Locations and items share the
- * table; the columns an audit row has nothing to say about are simply empty.
- * `record_type` and `mode` are the two columns that tell the receiving system
- * how to read the rest of the row, which is why they lead.
+ * ⚠ V6: ONE ROW PER ITEM, AND LOCATIONS NO LONGER GET A ROW AT ALL (decision
+ * 8A). Every line in the file is an asset. A location's floor and room ride on
+ * the first item row beneath it — see csvRowsForRecords() — and a location
+ * visited with nothing found under it leaves no trace in the file, which is
+ * what the client's own sample does.
+ *
+ * ⚠ LOCATION RECORDS ARE STILL MARKED EXPORTED even though they emit nothing.
+ * Leaving them unmarked would pile them up forever and drift the "not exported"
+ * count on the Backup page away from what is actually outstanding.
  *
  * ⚠ EXPORT DOES NOT DELETE (decision 8A). It stamps `exported: true` and stops.
  * Clearing is a separate, deliberate, confirmed action on the Backup page. Six
@@ -44,18 +49,51 @@ function csvColumnKeys() {
 //
 // One row per record, locations and items sharing the table. A column a record
 // has nothing to say about comes back '' from its own cell function.
+// ⚠ V6: A CELL NOW TAKES (record, ctx). Two columns — FLOOR and ROOM — cannot
+// be written from the row's own record: they need the LOCATION record, and they
+// need to know whether this row is the first of its location. Everything else
+// ignores the second argument entirely.
+//
+// ⚠ "FIRST OF ITS LOCATION" MEANS FIRST IN THIS FILE, AND THE SET IS REBUILT
+// ON EVERY EXPORT ON PURPOSE. Do not "optimise" this into a flag stored on the
+// location record. Export sends UNEXPORTED RECORDS ONLY, so a location
+// initialised on Monday and added to on Tuesday would put its floor and room in
+// Monday's file and leave Tuesday's file with no location detail anywhere in
+// it. Rebuilding per file means every file is self-describing, including a
+// single corrected row re-exported months later. The cost is that a location
+// spanning two files has its descriptors in both, which is harmless — the
+// client's system treats a repeated asset id as an update and these are
+// identical values.
 function csvRowsForRecords(records) {
   const cols = CSV_COLUMNS;
   const rows = [csvRow(cols.map(c => c.key))];
+  const seenLocation = {};
   for (let i = 0; i < records.length; i++) {
     const r = records[i];
+
+    // Keyed on the id where there is one and on the barcode where there is not,
+    // so items whose location record was deleted still group together rather
+    // than every one of them reading as the first of its own location.
+    const locKey = r.locationId ? ('id:' + r.locationId) : ('code:' + (r.locationCode || ''));
+    const first = seenLocation[locKey] !== 1;
+    seenLocation[locKey] = 1;
+
+    // Resolved ONCE per row rather than once per column — three columns would
+    // otherwise each walk the whole record list, on a phone, per row.
+    const ctx = {
+      location: (typeof locationRecordById === 'function')
+        ? locationRecordById(r.locationId)
+        : null,
+      firstForLocationInFile: first,
+    };
+
     const line = [];
     for (let c = 0; c < cols.length; c++) {
       // A column that throws would take the whole export with it, and the
       // export is the only thing the client ever sees. A cell that cannot be
       // derived is empty; the row still goes out.
       let v = '';
-      try { v = cols[c].cell(r); } catch (e) { v = ''; }
+      try { v = cols[c].cell(r, ctx); } catch (e) { v = ''; }
       line.push(v == null ? '' : v);
     }
     rows.push(csvRow(line));
@@ -64,17 +102,32 @@ function csvRowsForRecords(records) {
 }
 
 // Records in scan order. NOT newest-first: the client reads this as a walk
-// through the building, and a location row must precede the items scanned under
-// it or the file cannot be read sequentially at all.
+// through the building.
+//
+// ⚠ THE ORDER STILL MATTERS EVEN THOUGH LOCATIONS NO LONGER EMIT A ROW. It is
+// what decides WHICH item row carries a location's floor and room — the first
+// one scanned there, not whichever happens to sort first.
 function recordsForExport(onlyUnexported) {
   const list = state.records.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
   return onlyUnexported ? list.filter(r => !r.exported) : list;
 }
 
+// ⚠ V6: THE ROWS AND THE RECORDS-TO-MARK ARE TWO DIFFERENT LISTS, and keeping
+// them separate is the whole of decision 8A.
+//
+//   rows    — items only. A location emits nothing.
+//   records — items AND the location records in the same batch, so the
+//             locations get stamped exported and stop accumulating.
+//
+// `count` is the number of ROWS, because that is what the toast and the empty
+// check are about: an export of nothing but locations produces an empty file
+// and correctly reports nothing to export, leaving those locations pending for
+// the day items are finally scanned under them.
 function buildCSV(onlyUnexported) {
   const recs = recordsForExport(onlyUnexported);
+  const items = recs.filter(r => r.type === 'item');
   // \r\n, not \n. Excel on Windows is what opens this at the client's end.
-  return { text: csvRowsForRecords(recs).join('\r\n'), count: recs.length, records: recs };
+  return { text: csvRowsForRecords(items).join('\r\n'), count: items.length, records: recs };
 }
 
 function exportFilename() {

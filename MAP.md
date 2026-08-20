@@ -1,4 +1,4 @@
-# PATGo Scan — Code Map (V4)
+# PATGo Scan — Code Map (V6)
 
 Routing only: which concern lives in which file, and the cross-file couplings
 you cannot discover by reading one file. Read this to decide *what to open*.
@@ -143,15 +143,31 @@ because a dropped comma would not stop the app booting, it would stop the export
 at the end of a day's work. A cell function must never throw — csv.js catches,
 but a caught cell is an empty cell in the client's file.
 
-**⚠ V5: `CLASS_OPTIONS` now drives a two-position switch on the scan screen.**
-A third entry does not just add an option — it puts three segments in a control
-sized for two, and needs a matching `class_N` column or the new class exports as
-nothing. `VISUAL_KEY` is DEFAULT OFF and must stay so: absent means "tested".
+**⚠ V6: A CELL TAKES `(record, ctx)`.** Two columns — FLOOR and ROOM — cannot be
+written from the row's own record; they need the location and a
+first-of-its-location-IN-THIS-FILE flag. Everything else ignores the second
+argument. **Every cell must tolerate `ctx` being absent.** Helpers `csvOutcome()`
+and `csvLocationDescriptor()` live beside `CSV_COLUMNS` on purpose.
+
+**⚠ V6: `CLASS_OPTIONS` IS `['1','2']` AND THAT IS THE STORED FORM.** Not a
+mapping applied on the way out (decision 1B). Records written before V6 hold
+`I`/`II` and are migrated by `normaliseRecordClass()` in storage.js — reverting
+these strings without reverting that migration blanks the class on every
+existing record. A third entry puts three segments in a control sized for two.
+`CLASS_NO_EARTH_BOND` is named rather than written as a bare `'2'` because it is
+a fact about appliances, not a coincidence of the option list.
+`VISUAL_KEY` is DEFAULT OFF and must stay so: absent means "tested".
+
+**⚠ V6: THE READINGS (`EARTH_BOND_DEFAULT`, `INSULATION_DEFAULT`) ARE SEEDS.**
+The live values are in `state` and editable in Settings; the figure is COPIED
+onto each record as it is logged, so changing the setting never rewrites past
+work (decision 4B).
 
 ### state.js (~80 ln) — the global `state` object
 The single `let state = {…}`. Persisted fields, transients, derived.
 **Touch to:** add a runtime field.
-**⚠ V5: `visualMode` and `itemClass` sit with `mode`, not with Preferences.**
+**⚠ V5/V6: `visualMode`, `itemClass`, `earthBondValue` and `insulationValue` sit
+with `mode`, not with Preferences.**
 They decide what is written into the client's file, not how the app feels, and
 they are sticky across restarts (decision 7A). ⚠ Anything the app persists
 deliberately must also be reset in `harness/fixture.js resetApp()` or the first
@@ -241,6 +257,18 @@ Bound once from boot.js (rule 6). `focusScanInput()` is called from `render()`.
 Row building, export, share/download, clipboard copy, export flagging.
 **Touch to:** change the CSV or how it is delivered.
 **⚠ Column order is the client's spec (config.js), not ours.**
+**⚠ V6: ONE ROW PER ITEM — LOCATIONS EMIT NOTHING** (decision 8A). Their floor
+and room ride on the first item row beneath them. `buildCSV()` returns TWO
+different lists: `rows` (items only) and `records` (items *and* the locations in
+the batch, so those get marked exported and stop accumulating). `count` is rows.
+
+**⚠ V6: "FIRST OF ITS LOCATION" MEANS FIRST IN THIS FILE.** The `Set` is rebuilt
+on every export, deliberately. Do not park it on the location record — export
+sends unexported records only, so a location initialised Monday and added to
+Tuesday would leave Tuesday's file with no location detail anywhere in it.
+Mutation M119 breaks it in exactly that direction; test 13f is the only group
+that can see the difference.
+
 **⚠ V5: THIS FILE NO LONGER KNOWS WHAT THE COLUMNS ARE.** `csvRowsForRecords()`
 walks `CSV_COLUMNS` and builds the header and the body from the same list, so
 the two cannot disagree about order. Do not reintroduce a column name here — if
@@ -249,8 +277,9 @@ in `CSV_COLUMNS`, not a special case in the builder. `csvColumnKeys()` is the
 one accessor; the harness uses it so a reorder does not turn the suite red.
 **⚠ Export flags, it does not delete** — decision 8A. ⚠ The share must be called
 directly from the tap: iOS revokes the user gesture across an await.
-**Coupling:** `recordsForExport()` sorts by scan order deliberately — a location
-row must precede the items under it or the file cannot be read sequentially.
+**Coupling:** `recordsForExport()` sorts by scan order deliberately — with no
+location rows it is what decides WHICH item row carries a location's floor and
+room.
 
 ### backup.js (~190 ln) — backup / restore / clear
 `buildBackup`, restore, the file-kind guard, the clear path.

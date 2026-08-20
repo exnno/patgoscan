@@ -33,6 +33,19 @@ function stampLocal(ms) {
     ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
 }
 
+// V6 — the client's DATE column. dd/MM/yyyy, no time (decision 10A), matching
+// their own sample file exactly.
+//
+// ⚠ NOT stampLocal() TRUNCATED. That is ISO order (yyyy-MM-dd) and this is not;
+// slicing one to make the other would silently produce an American reading on
+// any day where the day and month could be swapped. Local, for the same reason
+// stampLocal is local: a scan logged at 00:30 in British summer time exports as
+// the previous day in UTC.
+function dateOnlyLocal(ms) {
+  const d = new Date(typeof ms === 'number' ? ms : Date.now());
+  return pad2(d.getDate()) + '/' + pad2(d.getMonth() + 1) + '/' + d.getFullYear();
+}
+
 function dateStampForFilename(ms) {
   const d = new Date(typeof ms === 'number' ? ms : Date.now());
   return d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate());

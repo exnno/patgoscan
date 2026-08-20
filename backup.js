@@ -10,10 +10,16 @@
  * set. A backup that restores under different rules than a load can produce a
  * state the app has never been tested against.
  *
- * ⚠ backupVersion IS 1 AND ADDITIVE FIELDS DO NOT SPEND A BUMP. Unknown fields
- * are ignored by the validators and known-but-absent ones fall back to their
- * defaults, so adding a field is always backwards compatible. Bump only for a
- * genuinely incompatible change of shape.
+ * ⚠ backupVersion IS 2 AS OF V6, AND ADDITIVE FIELDS STILL DO NOT SPEND A BUMP.
+ * Unknown fields are ignored by the validators and known-but-absent ones fall
+ * back to their defaults, so adding a field is always backwards compatible.
+ *
+ * WHAT SPENT THE BUMP: `cls` changed VALUE, from 'I'/'II' to '1'/'2'. Forwards
+ * is handled by normaliseRecordClass() in storage.js, which translates the
+ * Roman form on the way in. BACKWARDS is what the number is for — a V6 backup
+ * restored onto a V5 phone holds classes V5's CLASS_OPTIONS rejects, and every
+ * one of those records would export a blank class with nothing on screen to say
+ * so. Hence the newer-than-us guard in restoreBackupObject().
  *
  * ⚠ A BOOLEAN RESTORES ONLY WHEN THE BACKUP ACTUALLY HOLDS ONE. Absence is not
  * "off" — an older backup that predates a flag must leave that flag at its
@@ -37,6 +43,10 @@ function buildBackup() {
     itemPresets: state.itemPresets,
     activePresetId: state.activePresetId || '',
     prefs: {
+      // V6, additive — an older app ignores them and an older backup arrives
+      // without them, landing on the seeds.
+      earthBondValue: state.earthBondValue,
+      insulationValue: state.insulationValue,
       theme: state.theme,
       haptic: state.haptic,
       sound: state.sound,
@@ -98,6 +108,16 @@ function restoreBackupObject(obj) {
     showToast('That file has no records in it');
     return false;
   }
+  // ⚠ V6: REFUSE A BACKUP FROM THE FUTURE RATHER THAN IMPORTING IT
+  // OPTIMISTICALLY. This is the direction the version number exists for. A
+  // newer file may hold field VALUES this build does not understand — as a V6
+  // file does for anything before V6 — and the validators would quietly
+  // collapse each one to a default, which looks like a successful restore and
+  // is a silent partial data loss.
+  if (typeof obj.backupVersion === 'number' && obj.backupVersion > BACKUP_VERSION) {
+    showToast('That backup is from a newer version of the app');
+    return false;
+  }
 
   state.records = normaliseRecords(obj.records);
   state.engineer = cleanText(obj.engineer, 60);
@@ -115,6 +135,8 @@ function restoreBackupObject(obj) {
   const p = (obj.prefs && typeof obj.prefs === 'object') ? obj.prefs : {};
   state.theme = normaliseTheme(p.theme);
   state.scanSpeed = normaliseScanSpeed(p.scanSpeed);
+  state.earthBondValue = normaliseReading(p.earthBondValue, EARTH_BOND_DEFAULT);
+  state.insulationValue = normaliseReading(p.insulationValue, INSULATION_DEFAULT);
   if (typeof p.haptic === 'boolean') state.haptic = p.haptic;
   if (typeof p.sound === 'boolean') state.sound = p.sound;
   if (typeof p.scannerEnabled === 'boolean') state.scannerEnabled = p.scannerEnabled;

@@ -188,6 +188,31 @@ const ACTIONS = {
 
   editRecord: (arg) => openEditSheet(arg),
 
+  // V6 (13D) — the last item quick view. ⚠ THE WHOLE FEATURE'S DISPATCH SURFACE
+  // IS THESE TWO ENTRIES. Nothing else calls them; removing the block means
+  // removing them and renderLastItem() and the CSS, and nothing else.
+  //
+  // ⚠ UNDO CONFIRMS. It is the one destructive control on the scan screen that
+  // is not "discard the thing you have not committed yet" — this record is
+  // already in the log and already counted.
+  editLastItem: () => {
+    const rec = lastItemRecord();
+    if (!rec) { showToast('Nothing recorded yet'); return; }
+    openEditSheet(rec.id);
+  },
+
+  undoLastItem: () => {
+    const rec = lastItemRecord();
+    if (!rec) { showToast('Nothing recorded yet'); return; }
+    openConfirmSheet({
+      title: 'Undo ' + rec.code + '?',
+      body: 'It will be removed from the log and from any future export. Scan it again to record it afresh.',
+      confirmLabel: 'Undo', danger: true,
+      onConfirm: () => { deleteRecord(rec.id); showToast('Removed ' + rec.code); render(); },
+      onCancel: () => render(),
+    });
+  },
+
   dismissWelcome: () => { markWelcomeSeen(); render(); },
 
   // --- Settings -----------------------------------------------------------
@@ -200,6 +225,36 @@ const ACTIONS = {
         state.engineer = cleanText(v, 60);
         savePrefs();
         showToast('Saved');
+        render();
+      },
+      onCancel: () => render(),
+    });
+  },
+
+  // V6 — the readings (decision 4B). Free text, deliberately: '<0.2' and
+  // '>19.99' are not numbers and a numeric input would refuse both.
+  editEarthBond: () => {
+    openNameSheet({
+      title: 'Earth bond reading',
+      body: 'Written onto each Class 1 item as you log it. Class 2 items never carry one.',
+      value: state.earthBondValue,
+      onConfirm: (v) => {
+        state.earthBondValue = cleanText(v, READING_MAX);
+        savePrefs();
+        render();
+      },
+      onCancel: () => render(),
+    });
+  },
+
+  editInsulation: () => {
+    openNameSheet({
+      title: 'Insulation reading',
+      body: 'Written onto each item you test. A visual inspection never carries one.',
+      value: state.insulationValue,
+      onConfirm: (v) => {
+        state.insulationValue = cleanText(v, READING_MAX);
+        savePrefs();
         render();
       },
       onCancel: () => render(),
