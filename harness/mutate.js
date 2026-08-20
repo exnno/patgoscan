@@ -39,7 +39,7 @@ const MUTATIONS = [
   // the version bump breaks the find string and the mutation reports SKIPPED.
   // Update it as part of the bump; a skip here means the cache-key invariant
   // is unguarded for that release, which is how a build ships without one.
-  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v4'", "const CACHE_VERSION = 'pat-v71'",
+  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v5'", "const CACHE_VERSION = 'pat-v71'",
     'cache key using the parent app prefix'],
   ['M04', 'utils.js', '(c) 2026 Peter Birchley. All rights reserved.', '(c) 2026',
     'copyright header stripped'],
@@ -140,8 +140,17 @@ const MUTATIONS = [
   // --- the deliverable ---------------------------------------------------
   ['M38', 'utils.js', "return '\"' + s.replace(/\"/g, '\"\"') + '\"';", 'return s;',
     'CSV cells unquoted — one comma shifts every column'],
-  ['M39', 'config.js', "  'record_type',\n  'mode',", "  'mode',\n  'record_type',",
-    'the client\'s column order changed'],
+  // ⚠ RE-POINTED IN V5, NOT DELETED. M39 used to swap two entries in the header
+  // list to prove the header and the body agreed about order. Under V5 that
+  // swap is SAFE by construction — the header and the body are built from one
+  // list, which is the entire point of the change — so the old mutation would
+  // have reported a survivor for a property that is now structurally
+  // guaranteed. The invariant worth guarding moved with it: a column's key and
+  // its cell must belong to each other, because a value under the wrong header
+  // is the one failure a reorder-safe design does not prevent.
+  ['M39', 'config.js', "  { key: 'description', cell: (r) => (r.type === 'item' ? (r.description || '') : '') },",
+    "  { key: 'description', cell: (r) => (r.type === 'item' ? (r.result || '') : '') },",
+    'a column carrying the wrong value under the right header'],
   ['M40', 'csv.js', 'const list = state.records.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));',
     'const list = state.records.slice().sort(byNewest);',
     'export order reversed — locations after the items under them'],
@@ -325,6 +334,87 @@ const MUTATIONS = [
     'the keyboard flag latching on and never coming back off'],
   ['M91', 'styles.css', '.sheet-backdrop.is-keyboard .bulk-sheet { padding-bottom: 20px; }', '',
     'the flag set with no rule acting on it'],
+
+  // --- V5: the toggles and the column spec --------------------------------
+  //
+  // ⚠ THE SHAPE TO WATCH IN THIS RELEASE is a boolean that defaults to false.
+  // Deleting the code that writes `visual` leaves every record reading
+  // `visual: false`, which is what a tested item looks like — so any assertion
+  // that only ever checks the OFF state passes on an app that lost the feature
+  // entirely. M92, M95 and M99 all break it in the direction that survives a
+  // careless test.
+
+  ['M92', 'log.js', '    visual: pending.visual === true,', '    visual: false,',
+    'the visual flag never reaching a new record'],
+  ['M93', 'log.js', '  rec.visual = pending.visual === true;',
+    '  if (pending.visual) rec.visual = true;',
+    'the flag going one-way on a re-scan — settable, never clearable'],
+  ['M94', 'log.js', "    if (typeof fields.visual === 'boolean') rec.visual = fields.visual;",
+    '    if (fields.visual) rec.visual = fields.visual;',
+    'the edit sheet unable to turn Visual back OFF'],
+  ['M95', 'storage.js', '    out.visual = r.visual === true;', '    out.visual = !!r.visual;',
+    'a truthy string in a hand-edited backup marking work as visual-only'],
+  ['M96', 'storage.js', "  state.visualMode = _lsGet(VISUAL_KEY) === '1';",
+    "  state.visualMode = _lsGet(VISUAL_KEY) !== '0';",
+    'Visual defaulting ON for a phone that has never set it'],
+  ['M97', 'storage.js', "  _lsSet(VISUAL_KEY, state.visualMode ? '1' : '0');", '',
+    'the toggle not surviving a restart'],
+  ['M98', 'storage.js', '  return (CLASS_OPTIONS.indexOf(v) !== -1) ? v : ITEM_CLASS_DEFAULT;',
+    '  return (CLASS_OPTIONS.indexOf(v) !== -1) ? v : \'\';',
+    'a stored class falling back to blank, painting neither segment as on'],
+  ['M99', 'dispatch.js', '    visual: state.visualMode === true,', '    visual: false,',
+    'the toggle not reaching an audit scan'],
+  ['M100', 'dispatch.js', '    cls: state.itemClass,', "    cls: existing ? existing.cls : '',",
+    'the pre-V5 behaviour restored — an audit re-scan ignoring the toggle'],
+  ['M101', 'dispatch.js', '    if (state.pending) state.pending.visual = state.visualMode;', '',
+    'a toggle change not reaching the item already waiting for a result'],
+  ['M102', 'dispatch.js', '    if (state.pending) state.pending.cls = state.itemClass;', '',
+    'the same, for class'],
+
+  // The column spec. These are the deliverable, and the reorder-safety of the
+  // whole V5 arrangement rests on them.
+  ['M103', 'config.js', "  { key: 'class_1', cell: (r) => (r.type === 'item' && r.cls === 'I') ? r.code : '' },",
+    "  { key: 'class_1', cell: (r) => '' },",
+    'the class_1 column silently emptying'],
+  ['M104', 'config.js', "  { key: 'visual',  cell: (r) => (r.type === 'item' && r.visual === true) ? r.code : '' },",
+    "  { key: 'visual',  cell: (r) => '' },",
+    'the visual column silently emptying'],
+  ['M105', 'config.js', "  { key: 'asset_id',    cell: (r) => (r.type === 'item' ? r.code : '') },",
+    "  { key: 'asset_id',    cell: (r) => '' },",
+    'decision 1A quietly becoming 1B'],
+  ['M106', 'config.js', "  { key: 'class_2', cell: (r) => (r.type === 'item' && r.cls === 'II') ? r.code : '' },",
+    "  { key: 'class_2', cell: (r) => (r.type === 'item' && r.visual !== true && r.cls === 'II') ? r.code : '' },",
+    'decision 2B broken — visual suppressing the class column'],
+  ['M107', 'csv.js', '      try { v = cols[c].cell(r); } catch (e) { v = \'\'; }',
+    '      v = cols[c].cell(r);',
+    'one bad column taking the whole export with it'],
+  ['M108', 'csv.js', '  const rows = [csvRow(cols.map(c => c.key))];',
+    '  const rows = [csvRow(cols.map(c => c.key).slice(1))];',
+    'the header and the body disagreeing about width'],
+  ['M109', 'boot.js', '           _csvColumnsWellFormed() &&', '',
+    'a hand-edited column list booting with no shape check'],
+  ['M110', 'boot.js', "    if (typeof c.cell !== 'function') return false;", '',
+    'a column with no cell function passing the integrity guard'],
+
+  // The screen. A toggle that records correctly and shows nothing is a toggle
+  // nobody can tell is in the wrong position.
+  ['M111', 'render.js', "      ${renderScanToggles()}", '',
+    'the toggles missing from the scan screen entirely'],
+  ['M112', 'render.js', "  <div class=\"togrow${vis ? ' is-visual' : ''}\">",
+    '  <div class="togrow">',
+    'Visual no longer flagging itself on the scan screen'],
+  ['M113', 'render.js', "        ? '<span class=\"pending-flag\">VISUAL INSPECTION ONLY</span>'", "        ? ''",
+    'the pending panel not calling out a visual inspection before the verdict'],
+  ['M114', 'render.js', "      r.visual === true ? 'Visual' : '', itemLocationShort(r)]",
+    '      itemLocationShort(r)]',
+    'a visual item indistinguishable from a tested one in the log'],
+  ['M115', 'render.js', '      visual: vis,', '',
+    'the edit sheet dropping Visual on a round trip to another sheet'],
+  ['M116', 'render.js', "      visual: state.visualMode === true,",
+    '      visual: false,',
+    'an initial-mode item never recorded as visual'],
+  ['M117', 'styles.css', '.tog-opt.is-warn.is-on {', '.tog-opt.is-warn.is-NOT-on {',
+    'the Visual toggle losing the colour that makes it noticeable'],
 ];
 
 function run(cmd) {

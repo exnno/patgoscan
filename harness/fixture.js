@@ -127,6 +127,14 @@ function resetApp(app) {
   st.pending = null;
   st.locationArmed = false;
   st.mode = app.val('MODE_AUDIT');
+  // V5. ⚠ HARNESS DEFECT FOUND DURING THIS RELEASE, and it is the classic
+  // shape: these two are STICKY BY DESIGN, so without resetting them here the
+  // first group to flip a toggle silently sets it for every group that runs
+  // after it. The failure surfaces in an unrelated group, pointing at code that
+  // is working perfectly, and it moves about as tests are added or reordered.
+  // Anything the app deliberately persists has to be reset here.
+  st.visualMode = false;
+  st.itemClass = app.val('ITEM_CLASS_DEFAULT');
   st.engineer = '';
   st.view = 'scan';
   st.welcomeSeen = true;
