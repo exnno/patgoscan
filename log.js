@@ -266,6 +266,12 @@ function addItemRecord(pending, result, failReason) {
     failReason: result === 'fail' ? cleanText(failReason, 120) : '',
     description: cleanText(pending.description, 80),
     cls: (CLASS_OPTIONS.indexOf(pending.cls) !== -1) ? pending.cls : '',
+    // V5. ⚠ TAKEN FROM THE PENDING ITEM, NOT FROM state.visualMode. The pending
+    // item captured the toggle at scan time, and the toggle can be changed
+    // while an item waits for a result. Reading the live toggle here would
+    // record the position it ended up in rather than the one that was showing
+    // on screen when PASS was pressed.
+    visual: pending.visual === true,
     locationId: loc ? loc.id : '',
     locationCode: loc ? loc.code : '',
   };
@@ -287,6 +293,13 @@ function replaceItemRecord(id, pending, result, failReason) {
   rec.failReason = result === 'fail' ? cleanText(failReason, 120) : '';
   if (isNonEmptyString(pending.description)) rec.description = cleanText(pending.description, 80);
   if (CLASS_OPTIONS.indexOf(pending.cls) !== -1) rec.cls = pending.cls;
+  // V5. ⚠ ALWAYS WRITTEN, never conditional. `cls` above is guarded because an
+  // empty class means "not captured" and must not wipe a good one — but visual
+  // is a boolean with no such third state, so a guard like `if (pending.visual)`
+  // would make the flag one-way: you could mark an item visual by re-scanning
+  // it and never unmark it. Re-testing an item you had logged as visual-only is
+  // exactly the correction this path exists for.
+  rec.visual = pending.visual === true;
   rec.locationId = loc ? loc.id : rec.locationId;
   rec.locationCode = loc ? loc.code : rec.locationCode;
   rec.exported = false;    // changed since export — must go out again
@@ -304,6 +317,12 @@ function updateRecordFields(id, fields) {
     rec.failReason = rec.result === 'fail' ? cleanText(fields.failReason, 120) : '';
     if (typeof fields.description === 'string') rec.description = cleanText(fields.description, 80);
     if (CLASS_OPTIONS.indexOf(fields.cls) !== -1) rec.cls = fields.cls;
+    // V5. ⚠ `typeof === 'boolean'`, not truthiness. Testing the value itself
+    // would make `false` indistinguishable from "the caller did not mention
+    // it", and unticking Visual on the edit sheet would silently do nothing —
+    // the correction that matters most, since a full test wrongly recorded as
+    // visual-only understates work that was actually done.
+    if (typeof fields.visual === 'boolean') rec.visual = fields.visual;
     // V4 — the move. ⚠ BOTH FIELDS OR NEITHER (rule 12). The id is the pointer
     // and the code is the copy the client reads; writing one without the other
     // leaves an item filed under one location on screen and exported under

@@ -133,9 +133,29 @@ welcome, change the CSV spec.
 **Coupling:** rules 7, 8 and 12 originate here. `CSV_COLUMNS` is the client's
 specification — changing it changes what lands in their system.
 
+**⚠ V5: `CSV_COLUMNS` IS THE WHOLE SPEC, NOT A LIST OF NAMES.** Each entry is
+`{ key, cell }` — the header text plus how that column's value comes off one
+record. csv.js walks it and knows nothing about what is in it, so **reordering
+the client's file is cut-and-paste of whole lines here and nothing else**, and
+renaming a column is one string. This is the one constant expected to be edited
+by hand between releases; boot.js checks its shape (`_csvColumnsWellFormed()`)
+because a dropped comma would not stop the app booting, it would stop the export
+at the end of a day's work. A cell function must never throw — csv.js catches,
+but a caught cell is an empty cell in the client's file.
+
+**⚠ V5: `CLASS_OPTIONS` now drives a two-position switch on the scan screen.**
+A third entry does not just add an option — it puts three segments in a control
+sized for two, and needs a matching `class_N` column or the new class exports as
+nothing. `VISUAL_KEY` is DEFAULT OFF and must stay so: absent means "tested".
+
 ### state.js (~80 ln) — the global `state` object
 The single `let state = {…}`. Persisted fields, transients, derived.
 **Touch to:** add a runtime field.
+**⚠ V5: `visualMode` and `itemClass` sit with `mode`, not with Preferences.**
+They decide what is written into the client's file, not how the app feels, and
+they are sticky across restarts (decision 7A). ⚠ Anything the app persists
+deliberately must also be reset in `harness/fixture.js resetApp()` or the first
+test to flip it sets it for every test after it.
 **Coupling:** a new transient must also be cleared in `setView()` (render.js) —
 rule 4.
 
@@ -221,6 +241,12 @@ Bound once from boot.js (rule 6). `focusScanInput()` is called from `render()`.
 Row building, export, share/download, clipboard copy, export flagging.
 **Touch to:** change the CSV or how it is delivered.
 **⚠ Column order is the client's spec (config.js), not ours.**
+**⚠ V5: THIS FILE NO LONGER KNOWS WHAT THE COLUMNS ARE.** `csvRowsForRecords()`
+walks `CSV_COLUMNS` and builds the header and the body from the same list, so
+the two cannot disagree about order. Do not reintroduce a column name here — if
+a row needs a value this file would have to reach for, the answer is a new entry
+in `CSV_COLUMNS`, not a special case in the builder. `csvColumnKeys()` is the
+one accessor; the harness uses it so a reorder does not turn the suite red.
 **⚠ Export flags, it does not delete** — decision 8A. ⚠ The share must be called
 directly from the tap: iOS revokes the user gesture across an await.
 **Coupling:** `recordsForExport()` sorts by scan order deliberately — a location

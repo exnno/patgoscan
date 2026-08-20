@@ -25,6 +25,18 @@ let state = {
   mode: MODE_AUDIT,          // sticky across restarts — decision 2A
   currentLocationId: '',     // id of the location record now in force
 
+  // V5 — the two scan-screen toggles. Sticky across restarts (decision 7A),
+  // and they apply in BOTH modes: an audit item now carries a class, which
+  // before V5 it only did by inheriting one from an earlier initial.
+  //
+  // ⚠ THESE ARE NOT PREFERENCES. They live up here with `mode` and not down in
+  // Preferences because they decide WHAT GETS WRITTEN INTO THE CLIENT'S FILE.
+  // Theme and haptics change how the app feels; these change the data. Left in
+  // the wrong position they misfile every scan until somebody notices, which is
+  // why they are on the pending panel as well as the top of the screen.
+  visualMode: false,         // false = Test (DEFAULT), true = Visual
+  itemClass: ITEM_CLASS_DEFAULT,   // 'I' | 'II'
+
   failReasons: [],
   descriptions: [],           // LEARNED, feeds the dropdown only
 
@@ -54,7 +66,7 @@ let state = {
   // deliberately NOT in `records` — an item with no result is not data, and
   // writing it early would mean a mis-scan had to be found and deleted rather
   // than simply re-scanned over.
-  pending: null,             // { code, mode, description, cls }
+  pending: null,             // { code, mode, description, cls, visual }
 
   // --- Transient: sheets ----------------------------------------------------
   newItemSheet: null,        // { code } — initial mode, gathering desc + class

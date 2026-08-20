@@ -44,6 +44,12 @@
   --mode-tint-line: #86efac;
   --pass: #16a34a;
   --fail: #dc2626;
+  /* V5. The Visual toggle's on-state, and nothing else uses it yet.
+     ⚠ AMBER, NOT --fail. A visual inspection is not a failure, it is a state
+     worth noticing — and the Visual toggle sits directly above the FAIL button,
+     so red there would put two red controls a thumb's width apart on the one
+     screen where a mis-tap costs the client a wrong row. */
+  --warn: #b45309;
   --bg: #ffffff;
   --bg-alt: #f4f6f8;
   --ink: #111827;
@@ -61,6 +67,9 @@
   --mode-tint-line: #1c5334;
   --pass: #22c55e;
   --fail: #ef4444;
+  /* Lifted well above the light-theme amber: #b45309 on a near-black ground is
+     a muddy brown that reads as disabled rather than as a live warning. */
+  --warn: #d97706;
   --bg: #0b0f14;
   --bg-alt: #161b22;
   --ink: #f3f4f6;
@@ -184,6 +193,57 @@ li { margin-bottom: 8px; }
 .locbar.is-armed .locbar-hint { color: rgba(255,255,255,.85); }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .78; } }
 
+/* @@ toggles (V5) -------------------------------------------------------- */
+/* The two persistent switches, on their own rows beneath the location bar.
+   They apply in BOTH modes, which is why they are not part of the mode switch.
+
+   ⚠ DELIBERATELY QUIETER THAN .modeswitch. The mode switch is the single most
+   important control on this screen — Initial tints the entire background for
+   that reason — and two full-strength segmented controls stacked together give
+   the eye two "which one am I in?" questions and an instant answer to neither.
+   These are shorter, carry a standing label, and sit on the page rather than in
+   a tinted well. Do not promote them to match the mode switch. */
+.togrow {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+}
+.tog-label {
+  flex: 0 0 74px; font-size: 13px; font-weight: 650; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .04em;
+}
+.togswitch {
+  flex: 1; display: flex; gap: 4px; padding: 3px;
+  background: var(--bg-alt); border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.tog-opt {
+  flex: 1; min-height: 38px; border: 0; border-radius: 7px; cursor: pointer;
+  background: none; font-size: 15px; font-weight: 600; color: var(--ink-soft);
+}
+.tog-opt.is-on {
+  background: var(--bg); color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0,0,0,.14);
+}
+
+/* ⚠ VISUAL COLOURS IN. TEST DOES NOT. THE ASYMMETRY IS THE SAFETY FEATURE.
+   Test is the default and the safe position; Visual is the one that changes
+   what the client receives, and the one an engineer can leave switched on by
+   accident after a single item and then misfile a whole corridor with. A
+   toggle where both positions look equally settled gives no peripheral signal
+   that anything is unusual. Do NOT "balance" this by giving Test a colour of
+   its own — that removes the entire point of it.
+
+   Amber, not the fail red: this is not a failure, it is a state worth noticing.
+   Red here would compete with the FAIL button directly below it. */
+.tog-opt.is-warn.is-on {
+  background: var(--warn); color: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.2);
+}
+.togrow.is-visual .tog-label { color: var(--warn); }
+
+/* The last toggle row carries the gap down to the scan box, so the two rows
+   read as one group rather than as two unrelated strips. */
+.togrow:last-of-type { margin-bottom: 14px; }
+
 /* @@ scan --------------------------------------------------------------- */
 .scanbox {
   width: 100%; min-height: 56px; padding: 0 14px; margin-bottom: 6px;
@@ -212,6 +272,18 @@ li { margin-bottom: 8px; }
                  letter-spacing: .06em; color: var(--ink-soft); }
 .pending-code { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .pending-desc { font-size: 14px; color: var(--ink-soft); }
+
+/* V5 — the visual-inspection call-out on the pending panel.
+   ⚠ ONLY THE NON-DEFAULT STATE APPEARS. There is no matching "TESTED" badge and
+   there must not be: a badge on every scan is a badge that stops being read
+   within an hour, and the whole job of this line is to be unusual. It is inside
+   the pending panel rather than beside it because this panel is the last thing
+   under the engineer's eyes before PASS or FAIL is pressed. */
+.pending-flag {
+  margin-top: 6px; padding: 3px 10px; border-radius: 999px;
+  background: var(--warn); color: #fff;
+  font-size: 12px; font-weight: 700; letter-spacing: .06em;
+}
 
 /* @@ verdict ------------------------------------------------------------ */
 /* Deliberately enormous. These are pressed with gloves on, at arm's length,
@@ -430,6 +502,19 @@ label.btn-wide { line-height: 24px; }
   font-variant-numeric: tabular-nums; margin-bottom: 10px;
 }
 .sheet-body { font-size: 16px; color: var(--ink-soft); margin-bottom: 8px; }
+
+/* V5 — the standing line on the new item sheet saying what class will be
+   recorded. The sheet stopped ASKING for a class (decision 5) and the danger in
+   that is it becomes invisible: two taps saved per item is worth nothing if
+   nobody can tell what got written. So it is stated, in the same place the
+   question used to be, and it is quiet because it is confirmation rather than a
+   control. Tapping it does nothing on purpose — the toggle is on the scan
+   screen, and a second place to change class is a second place for the two to
+   disagree. */
+.sheet-note {
+  font-size: 13px; color: var(--ink-soft); margin: 10px 0 2px;
+}
+.sheet-note-warn { color: var(--warn); font-weight: 650; }
 .sheet-actions { display: flex; gap: 10px; margin-top: 18px; }
 .sheet-actions .btn { flex: 1; }
 

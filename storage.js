@@ -75,6 +75,11 @@ function normaliseRecord(r) {
     out.failReason = out.result === 'fail' ? cleanText(r.failReason, 120) : '';
     out.description = cleanText(r.description, 80);
     out.cls = (CLASS_OPTIONS.indexOf(r.cls) !== -1) ? r.cls : '';
+    // V5. ⚠ STRICTLY `=== true`, not truthy. A record restored from an older
+    // backup has no `visual` key at all, and every pre-V5 record was a full
+    // test — so absent must mean false. Anything looser would let a stray
+    // string from a hand-edited backup mark work as visual-only that was not.
+    out.visual = r.visual === true;
     out.locationId = isNonEmptyString(r.locationId) ? r.locationId : '';
     out.locationCode = cleanText(r.locationCode, SCAN_MAX_LENGTH);
   } else {
@@ -171,6 +176,13 @@ function normaliseMode(v) {
   return (v === MODE_INITIAL) ? MODE_INITIAL : MODE_AUDIT;
 }
 
+// V5. An unrecognised value falls back to the default rather than to empty:
+// the toggle is a two-position switch and there is no third position for it to
+// show. A blank here would paint neither segment as on.
+function normaliseItemClass(v) {
+  return (CLASS_OPTIONS.indexOf(v) !== -1) ? v : ITEM_CLASS_DEFAULT;
+}
+
 // ---------------------------------------------------------------------------
 // Load
 // ---------------------------------------------------------------------------
@@ -178,6 +190,11 @@ function load() {
   state.records = normaliseRecords(_parseJSON(_lsGet(RECORDS_KEY), []));
   state.engineer = cleanText(_lsGet(ENGINEER_KEY), 60);
   state.mode = normaliseMode(_lsGet(MODE_KEY));
+
+  // V5. ⚠ DEFAULT OFF, via `=== '1'` rather than `!== '0'`. An upgrading phone
+  // has no key at all, and absent must mean Test — see the note on VISUAL_KEY.
+  state.visualMode = _lsGet(VISUAL_KEY) === '1';
+  state.itemClass = normaliseItemClass(_lsGet(ITEM_CLASS_KEY));
   state.failReasons = normaliseStringList(
     _parseJSON(_lsGet(FAIL_REASONS_KEY), null), makeDefaultFailReasons, 40);
   state.descriptions = normaliseStringList(
@@ -218,6 +235,8 @@ function saveRecords() {
 function savePrefs() {
   _lsSet(ENGINEER_KEY, state.engineer || '');
   _lsSet(MODE_KEY, state.mode);
+  _lsSet(VISUAL_KEY, state.visualMode ? '1' : '0');
+  _lsSet(ITEM_CLASS_KEY, state.itemClass);
   _lsSet(THEME_KEY, state.theme);
   _lsSet(HAPTIC_KEY, state.haptic ? '1' : '0');
   _lsSet(SOUND_KEY, state.sound ? '1' : '0');

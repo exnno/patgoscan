@@ -13,14 +13,14 @@ things worth considering when the client's actual working day suggests them.
 
 ## Under consideration
 
-- **A Visual button alongside PASS and FAIL.** For items that get a visual
-  inspection only rather than a full test. Needs deciding: what the CSV carries
-  in the result column (a third value the client's importer has to accept, or a
-  pass with a flag), and whether a visual-only item still asks for a class.
-  Raised V3 in place of the dropped Class III item. ⚠ BLOCKED ON THE CLIENT, not
-  on us: the CSV columns are their specification and a third result value is not
-  ours to choose. Considered for V4 and deferred for exactly that. Ask them
-  before it is specced — everything else about it is a day's work.
+- **Confirm the final column layout with the client.** ⚠ CARRIED OUT OF V5 AND
+  STILL OPEN. V5 shipped `class_1`, `class_2` and `visual` on Peter's reading of
+  what they want, with the single `class` column retired. The layout is expected
+  to change. It is now a one-place edit — whole lines in `CSV_COLUMNS`
+  (config.js) — and the two hedges left open are one line each, written into the
+  file: **1B** (id moves out of `asset_id`) is emptying that column's cell, and
+  **2C** (visual becomes a flag rather than the id) is returning `'Y'` instead of
+  `r.code`. Nothing else in the app needs touching for either.
 
 ## Queued from V2
 
@@ -35,23 +35,59 @@ things worth considering when the client's actual working day suggests them.
   the scanner refuses to collect while a sheet is open, by construction since V1
   (mutations M24, M78), so this needs a new armed mode in the dispatch grammar
   along the lines of the location bar's. Its own release, and worth doing if the
-  picker turns out to be slow on a big site.
+  picker turns out to be slow on a big site. ⚠ Considered for V5 and dropped —
+  V5 changed the client's column layout, and a data-shape release and a new
+  armed scanner mode do not belong in the same upload.
 - **Naming an audit location retrospectively.** Already possible — tap it in the
   log and fill in Client / Floor / Room — but nothing prompts for it, and the V4
   picker is the first place where an unnamed location visibly costs something.
   If engineers start revisiting sites, a nudge to name a location the second
   time it is scanned might pay for itself. Watch before building.
 
+## Raised in V5 — the sessions group
+
+⚠ **THESE FOUR ARE ONE PIECE OF WORK, NOT FOUR.** Sessions is the spine and the
+other three sit on it; building any of them first means building a private
+version of sessions inside it and throwing that away later. This is also the
+first item on the list that genuinely changes the storage shape — it is the
+release where `backupVersion` finally moves off 1, which is reason enough not to
+bundle it with anything else.
+
+- **Work saved as sessions**, as PATGo does it. One continuous log per phone is
+  what V1 chose and it has held, but everything below needs a boundary to point
+  at.
+- **A sessions screen.** List, switch, name, close.
+- **Combine sessions and files from other engineers, flagging duplicates for
+  review.** The merge helper, in its answered form. Needs CSV reading.
+- **Duplicate item warnings.** ⚠ SCOPED CAREFULLY: the within-phone case ALREADY
+  EXISTS and has since V1 — re-scan an asset already logged and the confirm
+  sheet offers Replace or Skip it, caught at scan time while the engineer is
+  still stood at the appliance. What is missing is the CROSS-SESSION and
+  CROSS-ENGINEER case, which is the merge problem wearing a different hat. Do
+  not rebuild the local warning.
+
+## Raised in V5 — small and independent
+
+Both are cheap, neither depends on sessions, and either could ride along with a
+small release or be a V5.1 on its own.
+
+- **A quick view of the last item on the entry screen**, with delete, undo and
+  edit buttons. ⚠ Worth deciding first whether this replaces the "Discard this
+  scan" button or sits alongside it — two ways to unsay the last thing you did,
+  a thumb's width apart, on the screen where FAIL also lives.
+- **Totals on the log view.** The scan screen already carries today's pass /
+  fail / location counts; this is the same idea over the whole log rather than
+  the day, and it should say which it is counting or it will be read as the
+  other one.
+
 ## Worth building if the job grows
 
-- **Merge helper.** Six engineers produce six CSVs a day. Currently merged in a
-  spreadsheet. A small importer here — read several CSVs, resolve duplicate
-  asset ids by timestamp, emit one file — would remove a manual step at the end
-  of every day and a class of copy-paste error with it. ⚠ Flagged V4: this job
-  happens at a desk at the end of the day, not on a phone in a plant room, and
-  it needs the app to READ a CSV, which nothing here has ever done. It may want
-  to be a separate one-page tool rather than a screen in this app. Decide that
-  before speccing it. Still the highest-value item on the list.
+- **Merge helper.** ⚠ ITS OPEN QUESTION IS ANSWERED — see "Sessions" below,
+  which supersedes it. V4 asked whether this belonged in this app or in a
+  separate one-page tool; V5's scoping settled it as a screen here, driven by
+  sessions. What has NOT changed is that it needs the app to READ a CSV, which
+  nothing here has ever done, and that remains the single largest new capability
+  on the list.
 - **Setup bundle export/import.** PATGo has `setup.js`: a shareable config file
   covering lists and preferences. Worth porting when there are enough phones
   that setting each one by hand is a risk of inconsistency.

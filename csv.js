@@ -6,6 +6,12 @@
  * the column order in CSV_COLUMNS (config.js) is their specification, not ours.
  * Changing it changes what lands in their system.
  *
+ * ⚠ V5: THE COLUMNS LIVE ENTIRELY IN CONFIG.JS AND THIS FILE DOES NOT KNOW
+ * WHAT THEY ARE. Do not reintroduce a column name here. If a row needs a value
+ * this file would have to reach for, the answer is a new entry in CSV_COLUMNS,
+ * not a special case in the builder — the moment the order exists in two
+ * places, reordering the client's file stops being safe.
+ *
  * ONE FILE, ONE ROW PER RECORD (decision 3B). Locations and items share the
  * table; the columns an audit row has nothing to say about are simply empty.
  * `record_type` and `mode` are the two columns that tell the receiving system
@@ -22,43 +28,37 @@
  * repeated asset id as an update.
  */
 
+// The header text, in order. Anything that needs to know where a column sits
+// asks here rather than counting — including the harness, which is why
+// reordering CSV_COLUMNS does not turn the test suite red.
+function csvColumnKeys() {
+  return CSV_COLUMNS.map(c => c.key);
+}
+
+// ⚠ V5: THIS FUNCTION NO LONGER KNOWS WHAT THE COLUMNS ARE, and that is the
+// point. It walks CSV_COLUMNS and asks each column for its own cell, so the
+// header and the body cannot disagree about the order — they are built from
+// one list. The V4 version held the order three times (a header list plus two
+// positional row builders padded with empty strings) and every reorder meant
+// getting three copies right by hand.
+//
+// One row per record, locations and items sharing the table. A column a record
+// has nothing to say about comes back '' from its own cell function.
 function csvRowsForRecords(records) {
-  const rows = [csvRow(CSV_COLUMNS)];
+  const cols = CSV_COLUMNS;
+  const rows = [csvRow(cols.map(c => c.key))];
   for (let i = 0; i < records.length; i++) {
     const r = records[i];
-    if (r.type === 'location') {
-      rows.push(csvRow([
-        'location',
-        r.mode,
-        '',                 // asset_id
-        '',                 // description
-        '',                 // class
-        '',                 // result
-        '',                 // fail_reason
-        r.code,             // location_id — the barcode IS the location id
-        r.client || '',
-        r.floor || '',
-        r.room || '',
-        r.engineer || '',
-        stampLocal(r.ts),
-      ]));
-    } else {
-      rows.push(csvRow([
-        'item',
-        r.mode,
-        r.code,
-        r.description || '',
-        r.cls || '',
-        r.result || '',
-        r.failReason || '',
-        r.locationCode || '',
-        '',                 // client  — carried on the location row
-        '',                 // floor
-        '',                 // room
-        r.engineer || '',
-        stampLocal(r.ts),
-      ]));
+    const line = [];
+    for (let c = 0; c < cols.length; c++) {
+      // A column that throws would take the whole export with it, and the
+      // export is the only thing the client ever sees. A cell that cannot be
+      // derived is empty; the row still goes out.
+      let v = '';
+      try { v = cols[c].cell(r); } catch (e) { v = ''; }
+      line.push(v == null ? '' : v);
     }
+    rows.push(csvRow(line));
   }
   return rows;
 }

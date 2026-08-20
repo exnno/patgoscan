@@ -119,12 +119,34 @@ function _constantsPresent() {
     return typeof APP_VERSION !== 'undefined' &&
            typeof RECORDS_KEY !== 'undefined' &&
            typeof CSV_COLUMNS !== 'undefined' &&
+           _csvColumnsWellFormed() &&
            typeof SCAN_GAP_PRESETS !== 'undefined' &&
            typeof MODE_AUDIT !== 'undefined';
   } catch (e) {
     // A TDZ binding throws rather than reporting undefined — that is a fail.
     return false;
   }
+}
+
+// V5. ⚠ SHAPE, NOT JUST PRESENCE. CSV_COLUMNS stopped being a list of strings
+// and became a list of { key, cell } — and it is now expected to be EDITED BY
+// HAND between releases, to reorder the client's file. A hand edit that drops a
+// comma or leaves a column without a cell function would not stop the app
+// booting; it would stop the export, silently, at the end of a day's work. This
+// is the one constant worth checking the inside of.
+function _csvColumnsWellFormed() {
+  if (!Array.isArray(CSV_COLUMNS) || !CSV_COLUMNS.length) return false;
+  const seen = {};
+  for (let i = 0; i < CSV_COLUMNS.length; i++) {
+    const c = CSV_COLUMNS[i];
+    if (!c || typeof c.key !== 'string' || !c.key) return false;
+    if (typeof c.cell !== 'function') return false;
+    // Two columns with one header is a file the client's importer reads wrong
+    // rather than rejects, which is the worse of the two outcomes.
+    if (seen[c.key]) return false;
+    seen[c.key] = 1;
+  }
+  return true;
 }
 
 function bootIntegrityOK() {

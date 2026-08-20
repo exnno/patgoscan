@@ -91,7 +91,18 @@ function _beginPending(code, replaceId, existing) {
     // description already captured — re-typing it would be busywork and a
     // chance to type it differently.
     description: existing ? existing.description : '',
-    cls: existing ? existing.cls : '',
+    // V5 — audit items now carry a class and a visual flag, from the toggles.
+    //
+    // ⚠ THE TOGGLE WINS OVER THE EXISTING RECORD, and that is deliberate.
+    // Before V5 an audit re-scan inherited `existing.cls`, because there was no
+    // other way for an audit item to have one. Now there is, and the toggle is
+    // the engineer's live statement about the appliance in front of them — a
+    // rule of "the toggle, unless an older record disagrees" is the kind
+    // nobody remembers, and it would make the switch silently inert on exactly
+    // the items most likely to need correcting. The duplicate sheet has already
+    // told them this asset was scanned before.
+    cls: state.itemClass,
+    visual: state.visualMode === true,
   };
   render();
 }
@@ -120,6 +131,31 @@ const ACTIONS = {
 
   setMode: (arg) => {
     state.mode = normaliseMode(arg);
+    savePrefs();
+    render();
+  },
+
+  // V5 — the two persistent toggles. Same shape as setMode above: a
+  // two-position switch written straight through to storage so it survives a
+  // restart (decision 7A).
+  //
+  // ⚠ CHANGING A TOGGLE WHILE AN ITEM IS PENDING UPDATES THE PENDING ITEM TOO,
+  // and this is the whole reason the toggle state is repeated down on the
+  // pending panel. The moment an engineer is most likely to notice the switch
+  // is in the wrong position is when they look down at an asset waiting for a
+  // result. Without this they would have to discard the scan and start again —
+  // and the realistic alternative to that, mid-corridor, is pressing PASS
+  // anyway and leaving a wrong row in the client's file.
+  setClass: (arg) => {
+    state.itemClass = normaliseItemClass(arg);
+    if (state.pending) state.pending.cls = state.itemClass;
+    savePrefs();
+    render();
+  },
+
+  setVisual: (arg) => {
+    state.visualMode = (arg === 'visual');
+    if (state.pending) state.pending.visual = state.visualMode;
     savePrefs();
     render();
   },

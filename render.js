@@ -109,6 +109,46 @@ function renderNav(active) {
   </nav>`;
 }
 
+// V5 — the two persistent toggles, on their own rows beneath the location bar
+// (decision 8). They apply in BOTH modes, which is why they sit below the
+// location bar rather than inside the mode switch: they are not a property of
+// audit or of initial, they are a property of the next scan either way.
+//
+// ⚠ THEY MUST NOT OUT-SHOUT THE MODE SWITCH. The mode switch is the single most
+// important control on this screen and Initial tints the whole background for
+// that reason — a second full-strength control beside it gives two "which one
+// am I in?" questions and an instant answer to neither. So these are smaller,
+// carry their own label, and only the non-default position colours in.
+//
+// ⚠ VISUAL COLOURS IN, TEST DOES NOT — and not for symmetry's sake. Test is the
+// default and the safe position; Visual is the one that changes what the client
+// receives and the one an engineer can leave switched on by accident after a
+// single item. The asymmetry IS the safety feature. Do not "tidy" it by giving
+// Test a colour of its own.
+function renderScanToggles() {
+  const cls = state.itemClass;
+  const vis = state.visualMode === true;
+  const opt = (action, arg, on, label, extra) =>
+    `<button type="button" class="tog-opt${on ? ' is-on' : ''}${extra || ''}"
+             data-action="${action}" data-arg="${arg}"
+             aria-pressed="${on ? 'true' : 'false'}">${escapeHTML(label)}</button>`;
+
+  return `
+  <div class="togrow">
+    <span class="tog-label">Class</span>
+    <div class="togswitch" role="group" aria-label="Item class">
+      ${CLASS_OPTIONS.map(c => opt('setClass', c, cls === c, 'Class ' + c, '')).join('')}
+    </div>
+  </div>
+  <div class="togrow${vis ? ' is-visual' : ''}">
+    <span class="tog-label">Inspection</span>
+    <div class="togswitch" role="group" aria-label="Inspection type">
+      ${opt('setVisual', 'test', !vis, 'Test', '')}
+      ${opt('setVisual', 'visual', vis, 'Visual', ' is-warn')}
+    </div>
+  </div>`;
+}
+
 // ---------------------------------------------------------------------------
 // THE SCAN SCREEN — the only screen that matters on a working day
 // ---------------------------------------------------------------------------
@@ -145,11 +185,21 @@ function renderScan() {
   if (pending) {
     const desc = [pending.description, pending.cls ? 'Class ' + pending.cls : '']
       .filter(isNonEmptyString).join(' · ');
+    // V5. ⚠ THE TOGGLE STATE IS REPEATED HERE ON PURPOSE. It is already at the
+    // top of the screen, and that is not enough: the top of the screen is set
+    // once and then stops being looked at, while this panel is under the
+    // engineer's eyes at the exact moment they commit a result. A switch left
+    // in the wrong position misfiles every scan silently until somebody
+    // notices, and this is the place it gets noticed. Only the state that
+    // costs something is called out — Test is the default and stays quiet.
     panel = `
     <div class="pending">
       <span class="pending-label">Waiting for a result</span>
       <span class="pending-code">${escapeHTML(pending.code)}</span>
       ${desc ? `<span class="pending-desc">${escapeHTML(desc)}</span>` : ''}
+      ${pending.visual
+        ? '<span class="pending-flag">VISUAL INSPECTION ONLY</span>'
+        : ''}
     </div>
     <div class="verdict">
       <button type="button" class="btn-pass" data-action="pass">PASS</button>
@@ -161,7 +211,7 @@ function renderScan() {
     <div class="prompt">
       <span class="prompt-big">Scan an asset</span>
       <span class="prompt-small">${initial
-        ? 'Initial — you will be asked for a description and class'
+        ? 'Initial — you will be asked for a description'
         : 'Audit — pass or fail only'}</span>
     </div>`;
   }
@@ -179,6 +229,8 @@ function renderScan() {
       </div>
 
       ${locBar}
+
+      ${renderScanToggles()}
 
       <input type="text" id="scan-input" class="scanbox"
              placeholder="Barcode appears here"
@@ -249,7 +301,14 @@ function renderLogListHTML() {
     }
     // V2: the room, not the bare barcode. "Kitchen" tells an engineer holding
     // the phone where they were; "L-204" makes them go and look it up.
-    const bits = [r.description, r.cls ? 'Class ' + r.cls : '', itemLocationShort(r)]
+    // V5 — Visual joins the meta line (decision 9: enough to spot a mistake,
+    // and no more). ⚠ ONLY THE NON-DEFAULT STATE IS PRINTED. Writing "Test" on
+    // every one of a few hundred rows would push the description and the room
+    // off the end of the line to say what is true of almost all of them, and a
+    // word that appears on every row is a word that stops being read. The one
+    // that costs something is the one that shows.
+    const bits = [r.description, r.cls ? 'Class ' + r.cls : '',
+      r.visual === true ? 'Visual' : '', itemLocationShort(r)]
       .filter(isNonEmptyString).join(' · ');
     return `
     <button type="button" class="row row-item is-${escapeHTML(r.result || 'none')}"
@@ -445,9 +504,9 @@ function renderAbout() {
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V5</b> — two switches now sit under the location bar and stay where you put them: <b>Class</b> (I or II) and <b>Test or Visual</b>. They apply to everything you scan in both modes, so a run of the same kind of appliance is set once rather than answered item by item. New items no longer ask for a class. An item recorded as Visual is called out on screen before you pass it and again in the log. The export gained separate columns for class and for visual inspections.</p>
       <p class="muted small"><b>V4</b> — an item logged in the wrong place can now be moved: tap it in the log and change its location. The picker shows each location's time, how many items you did there and what they were, so a bare barcode is still recognisable. Correcting an item also gets the Quick Pick buttons and the description suggestions the new item sheet has.</p>
       <p class="muted small"><b>V3</b> — the boxes that ask you to type something no longer jump about when the keyboard comes up. They now sit above the keyboard with their buttons reachable, instead of behind it.</p>
-      <p class="muted small"><b>V2</b> — scanners sending characters more slowly are now accepted, which fixes scans being silently rejected. New PATGo colours and a new icon; Initial mode tints green. The log now shows which location an item was tested in, and Settings has been tidied up.</p>
 
       <p class="muted small">© 2026 Peter Birchley. All rights reserved.</p>
     </main>
@@ -460,11 +519,12 @@ function renderWelcome() {
     <main class="main welcome">
       <h1>PATGo Scan</h1>
 
-      <h2 class="sec">New in V4</h2>
+      <h2 class="sec">New in V5</h2>
       <ul>
-        <li><b>An item can be moved to another location.</b> Scanned something before you set the location, or set the wrong one? Tap the item in the log, tap Change next to Location, pick the right one. It only offers locations you have actually scanned.</li>
-        <li><b>The picker tells you which is which.</b> Every location shows the time you were there, how many items you did and the first few of them — so a location that is only a barcode is still one you can recognise. Give a location a room name (tap it in the log) and it shows that instead.</li>
-        <li><b>Correcting a description is now as quick as entering one.</b> The Quick Pick buttons and the suggestions as you type are on the edit screen too, not just on a new item.</li>
+        <li><b>Two new switches, under the location bar.</b> <b>Class</b> — I or II. <b>Inspection</b> — Test or Visual. Set them once and everything you scan after that is recorded that way, in both Audit and Initial.</li>
+        <li><b>New items stop asking for a class.</b> The switch answers it, so a new item is now just a description and a result. The sheet tells you which class it is about to record.</li>
+        <li><b>Visual is meant to stand out.</b> The switch turns amber and the item waiting for a result says VISUAL INSPECTION ONLY before you press PASS. Visual items are marked in the log too, so a switch left on by mistake is something you can find and fix.</li>
+        <li><b>They stay put between uses.</b> Closing the app and coming back keeps them where you left them — like the Audit and Initial switch always has. <b>Worth a glance each morning.</b></li>
         <li>Your records, lists and settings are exactly as you left them.</li>
       </ul>
 
@@ -472,7 +532,8 @@ function renderWelcome() {
       <ul>
         <li>Tap the location bar, scan a location barcode. Everything you scan after that is recorded there.</li>
         <li><b>Audit</b> mode: scan an asset, tap PASS or FAIL. That's it.</li>
-        <li><b>Initial</b> mode: the screen turns green, and each new asset asks for a description and class.</li>
+        <li><b>Initial</b> mode: the screen turns green, and each new asset asks for a description.</li>
+        <li>Check the two switches under the location bar — Class, and Test or Visual — before you start.</li>
         <li>At the end of the day, Settings → Export and backup. Send the CSV, save a backup.</li>
       </ul>
       <p class="muted small">Put your name in Settings first — it goes on every record and into the filename, which is what lets several engineers' files be merged.</p>
@@ -516,16 +577,14 @@ function openNewItemSheet(code) {
              placeholder="${picks.length ? '…or type it' : 'e.g. Kettle'}">
       <div id="ni-suggest" class="suggest is-hidden"></div>
     </div>
-    <label class="lbl">Class</label>
-    <div class="classpick" id="ni-class">
-      ${CLASS_OPTIONS.map(c => `<button type="button" class="class-opt" data-cls="${c}">Class ${c}</button>`).join('')}
-    </div>
+    <p class="sheet-note">Class ${escapeHTML(state.itemClass)}${state.visualMode
+      ? ' · <span class="sheet-note-warn">visual inspection only</span>'
+      : ''} — set on the scan screen</p>
     <div class="sheet-actions">
       <button type="button" class="btn btn-ghost" id="ni-cancel">Cancel</button>
       <button type="button" class="btn btn-primary" id="ni-ok">Continue</button>
     </div>`;
 
-  let chosenClass = '';
   const desc = sheet.querySelector('#ni-desc');
   const suggest = sheet.querySelector('#ni-suggest');
 
@@ -578,21 +637,25 @@ function openNewItemSheet(code) {
     });
   }
 
-  sheet.querySelector('#ni-class').addEventListener('click', (e) => {
-    const btn = e.target.closest('.class-opt');
-    if (!btn) return;
-    chosenClass = btn.getAttribute('data-cls') || '';
-    sheet.querySelectorAll('.class-opt').forEach(b =>
-      b.classList.toggle('is-on', b === btn));
-  });
-
   sheet.querySelector('#ni-cancel').onclick = () => { closeSheet(); render(); };
   sheet.querySelector('#ni-ok').onclick = () => {
     const d = titleCaseWords(cleanText(desc.value, 80));
     if (!d) { showToast('Give it a description'); return; }
-    if (!chosenClass) { showToast('Pick a class'); return; }
+    // V5 — CLASS COMES FROM THE TOGGLE, NOT FROM THIS SHEET (decision 5). The
+    // sheet used to ask, and refused to continue until it was answered: two
+    // taps per item, on the one question whose answer is the same for a whole
+    // run of appliances. The line above it says what will be recorded, so it is
+    // stated rather than silent, and the "Pick a class" guard is gone because
+    // there is no longer an unanswered state for it to catch — the toggle
+    // always holds one of the two.
     closeSheet();
-    state.pending = { code: code, mode: MODE_INITIAL, description: d, cls: chosenClass };
+    state.pending = {
+      code: code,
+      mode: MODE_INITIAL,
+      description: d,
+      cls: state.itemClass,
+      visual: state.visualMode === true,
+    };
     render();
   };
 
@@ -812,6 +875,10 @@ function openEditSheet(id, draft) {
     const d = draft || {};
     const curDesc = (typeof d.description === 'string') ? d.description : rec.description;
     const curCls = (typeof d.cls === 'string') ? d.cls : rec.cls;
+    // V5. ⚠ `typeof === 'boolean'` again — a draft holding `false` is a real
+    // answer ("I just unticked Visual"), and testing truthiness would throw it
+    // away and fall back to the record on every round trip out to another sheet.
+    const curVis = (typeof d.visual === 'boolean') ? d.visual : (rec.visual === true);
     const curRes = (typeof d.result === 'string') ? d.result : rec.result;
     const curReason = (typeof d.failReason === 'string') ? d.failReason : rec.failReason;
 
@@ -848,6 +915,11 @@ function openEditSheet(id, draft) {
       <div class="classpick" id="ed-class">
         ${CLASS_OPTIONS.map(c => `<button type="button" class="class-opt${curCls === c ? ' is-on' : ''}" data-cls="${c}">Class ${c}</button>`).join('')}
       </div>
+      <label class="lbl">Inspection</label>
+      <div class="classpick" id="ed-visual">
+        <button type="button" class="class-opt${curVis ? '' : ' is-on'}" data-vis="0">Test</button>
+        <button type="button" class="class-opt${curVis ? ' is-on' : ''}" data-vis="1">Visual</button>
+      </div>
       <label class="lbl">Result</label>
       <div class="classpick" id="ed-result">
         <button type="button" class="class-opt${curRes === 'pass' ? ' is-on' : ''}" data-res="pass">PASS</button>
@@ -865,6 +937,7 @@ function openEditSheet(id, draft) {
       </div>`;
 
     let cls = curCls;
+    let vis = curVis;
     let res = curRes;
     let reason = curReason;
     let locId = curLocId;
@@ -878,6 +951,13 @@ function openEditSheet(id, draft) {
     const snapshot = () => ({
       description: sheet.querySelector('#ed-desc').value,
       cls: cls,
+      // ⚠ V5 JOINS THE DRAFT for the same reason locationId did in V4. This
+      // sheet has two round trips out to other sheets (the location picker and
+      // the fail reason picker) and opening either destroys this one. A field
+      // left out of the snapshot is a field silently reverted the moment the
+      // engineer taps Change — and Visual is one tap next to Class, so the two
+      // most likely edits sit next to each other.
+      visual: vis,
       result: res,
       failReason: reason,
       locationId: locId,
@@ -978,6 +1058,12 @@ function openEditSheet(id, draft) {
       sheet.querySelectorAll('#ed-class .class-opt').forEach(x => x.classList.toggle('is-on', x === b));
     });
 
+    sheet.querySelector('#ed-visual').addEventListener('click', (e) => {
+      const b = e.target.closest('.class-opt'); if (!b) return;
+      vis = b.getAttribute('data-vis') === '1';
+      sheet.querySelectorAll('#ed-visual .class-opt').forEach(x => x.classList.toggle('is-on', x === b));
+    });
+
     sheet.querySelector('#ed-result').addEventListener('click', (e) => {
       const b = e.target.closest('.class-opt'); if (!b) return;
       res = b.getAttribute('data-res');
@@ -1008,6 +1094,7 @@ function openEditSheet(id, draft) {
       updateRecordFields(id, {
         description: titleCaseWords(sheet.querySelector('#ed-desc').value),
         cls: cls,
+        visual: vis,
         result: res,
         failReason: reason,
         locationId: locId,
