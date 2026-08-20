@@ -10,7 +10,15 @@ module.exports = function (app) {
   const st = app.state();
   const AUDIT = app.val('MODE_AUDIT');
   const INITIAL = app.val('MODE_INITIAL');
-  const COLS = app.val('CSV_COLUMNS');
+  // ⚠ V5: CSV_COLUMNS IS NOW A LIST OF { key, cell }, NOT A LIST OF STRINGS.
+  // Everything below asks for a column BY NAME and never by position, because
+  // the whole point of the V5 rewrite is that the client's column order is
+  // expected to be rearranged in config.js between releases. A suite that
+  // pinned positions would turn red on a reorder that broke nothing, and the
+  // reflex fix for a red suite you believe is wrong is to loosen the assertion.
+  const SPEC = app.val('CSV_COLUMNS');
+  const COLS = SPEC.map(c => c.key);
+  function at(cellArr, key) { return cellArr[COLS.indexOf(key)]; }
 
   function build(onlyNew) { return app.fn('buildCSV')(onlyNew); }
   function rows(text) { return text.split('\r\n'); }
@@ -23,8 +31,14 @@ module.exports = function (app) {
     F.resetApp(app);
     const r = rows(build(false).text);
     A.eq('header matches CSV_COLUMNS exactly', cells(r[0]), COLS);
-    A.eq('record_type leads', COLS[0], 'record_type');
-    A.eq('mode second', COLS[1], 'mode');
+    // Order-independent: these columns must EXIST and be unique. Where they sit
+    // is the client's business and may change without this file changing.
+    ['record_type', 'mode', 'asset_id', 'class_1', 'class_2', 'visual',
+     'result', 'location_id', 'scanned_at'].forEach((k) => {
+      A.ok(k + ' is a column', COLS.indexOf(k) !== -1);
+    });
+    A.ok('no duplicate headers', new Set(COLS).size === COLS.length);
+    A.ok('the retired single class column is gone', COLS.indexOf('class') === -1);
   });
 
   A.group('06b every cell is quoted, including safe-looking ones', () => {
@@ -36,7 +50,7 @@ module.exports = function (app) {
     app.fn('addItemRecord')({ code: 'A1', mode: AUDIT }, 'fail', 'Damaged Lead, replaced on site');
     const r = rows(build(false).text);
     A.ok('the comma did not split the row', cells(r[2]).length === COLS.length);
-    A.eq('reason intact', cells(r[2])[COLS.indexOf('fail_reason')], 'Damaged Lead, replaced on site');
+    A.eq('reason intact', at(cells(r[2]), 'fail_reason'), 'Damaged Lead, replaced on site');
   });
 
   A.group('06c an embedded double quote is escaped, not lost', () => {
@@ -62,9 +76,9 @@ module.exports = function (app) {
     // flakiness, which is worse than a plain failure because it hides.
     st.records.forEach((rec, i) => { rec.ts = 1700000000000 + i * 1000; });
     const r = rows(build(false).text);
-    A.eq('location first', cells(r[1])[0], 'location');
-    A.eq('then A1', cells(r[2])[COLS.indexOf('asset_id')], 'A1');
-    A.eq('then A2', cells(r[3])[COLS.indexOf('asset_id')], 'A2');
+    A.eq('location first', at(cells(r[1]), 'record_type'), 'location');
+    A.eq('then A1', at(cells(r[2]), 'asset_id'), 'A1');
+    A.eq('then A2', at(cells(r[3]), 'asset_id'), 'A2');
   });
 
   A.group('06e an audit item row leaves the initial-only columns empty', () => {
@@ -73,15 +87,14 @@ module.exports = function (app) {
     st.engineer = 'Pete';
     app.fn('addItemRecord')({ code: 'A1', mode: AUDIT }, 'pass', '');
     const c = cells(rows(build(false).text)[2]);
-    A.eq('type', c[COLS.indexOf('record_type')], 'item');
-    A.eq('mode', c[COLS.indexOf('mode')], AUDIT);
-    A.eq('asset', c[COLS.indexOf('asset_id')], 'A1');
-    A.eq('result', c[COLS.indexOf('result')], 'pass');
-    A.eq('location carried from the sticky location', c[COLS.indexOf('location_id')], 'LOC-9');
-    A.eq('engineer stamped', c[COLS.indexOf('engineer')], 'Pete');
-    A.eq('description empty on an audit', c[COLS.indexOf('description')], '');
-    A.eq('class empty on an audit', c[COLS.indexOf('class')], '');
-    A.eq('client empty on an item row', c[COLS.indexOf('client')], '');
+    A.eq('type', at(c, 'record_type'), 'item');
+    A.eq('mode', at(c, 'mode'), AUDIT);
+    A.eq('asset', at(c, 'asset_id'), 'A1');
+    A.eq('result', at(c, 'result'), 'pass');
+    A.eq('location carried from the sticky location', at(c, 'location_id'), 'LOC-9');
+    A.eq('engineer stamped', at(c, 'engineer'), 'Pete');
+    A.eq('description empty on an audit', at(c, 'description'), '');
+    A.eq('client empty on an item row', at(c, 'client'), '');
   });
 
   A.group('06f an initial item row carries description and class', () => {
@@ -89,21 +102,22 @@ module.exports = function (app) {
     app.fn('addLocationRecord')('LOC-9', AUDIT, null);
     app.fn('addItemRecord')({ code: 'A2', mode: INITIAL, description: 'Kettle', cls: 'II' }, 'pass', '');
     const c = cells(rows(build(false).text)[2]);
-    A.eq('mode', c[COLS.indexOf('mode')], INITIAL);
-    A.eq('description', c[COLS.indexOf('description')], 'Kettle');
-    A.eq('class', c[COLS.indexOf('class')], 'II');
+    A.eq('mode', at(c, 'mode'), INITIAL);
+    A.eq('description', at(c, 'description'), 'Kettle');
+    A.eq('the id lands in the class_2 column', at(c, 'class_2'), 'A2');
+    A.eq('and not in class_1', at(c, 'class_1'), '');
   });
 
   A.group('06g an initial location row carries client, floor and room', () => {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-3', INITIAL, { client: 'Acme', floor: '2', room: 'Kitchen' });
     const c = cells(rows(build(false).text)[1]);
-    A.eq('type', c[COLS.indexOf('record_type')], 'location');
-    A.eq('location id is the barcode', c[COLS.indexOf('location_id')], 'LOC-3');
-    A.eq('client', c[COLS.indexOf('client')], 'Acme');
-    A.eq('floor', c[COLS.indexOf('floor')], '2');
-    A.eq('room', c[COLS.indexOf('room')], 'Kitchen');
-    A.eq('no asset id on a location row', c[COLS.indexOf('asset_id')], '');
+    A.eq('type', at(c, 'record_type'), 'location');
+    A.eq('location id is the barcode', at(c, 'location_id'), 'LOC-3');
+    A.eq('client', at(c, 'client'), 'Acme');
+    A.eq('floor', at(c, 'floor'), '2');
+    A.eq('room', at(c, 'room'), 'Kitchen');
+    A.eq('no asset id on a location row', at(c, 'asset_id'), '');
   });
 
   A.group('06h "new only" excludes what has already gone out', () => {

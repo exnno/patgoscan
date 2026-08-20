@@ -190,21 +190,29 @@ module.exports = function (app) {
 
   A.group('10j the release strings all agree', () => {
     const css = L.readFile('styles.css');
-    A.eq('the app version is V4', app.val('APP_VERSION'), 'V4');
-    A.eq('the welcome rolled with it', app.val('WELCOME_VERSION'), 'V4');
-    A.eq('the cache key matches', L.cacheVersion(), 'scan-v4');
-    A.ok('About leads with V4',
-      app.fn('renderAbout')().indexOf('<b>V4</b>') !== -1);
-    // Rolling three: V4, V3, V2. ⚠ THE OLDEST MUST HAVE DROPPED OFF — asserting
+    A.eq('the app version is V5', app.val('APP_VERSION'), 'V5');
+    A.eq('the welcome rolled with it', app.val('WELCOME_VERSION'), 'V5');
+    A.eq('the cache key matches', L.cacheVersion(), 'scan-v5');
+    A.ok('About leads with V5',
+      app.fn('renderAbout')().indexOf('<b>V5</b>') !== -1);
+    // Rolling three: V5, V4, V3. ⚠ THE OLDEST MUST HAVE DROPPED OFF — asserting
     // only that the tail is present would stay green on a changelog that had
     // simply grown a fourth entry and never dropped anything.
-    A.ok('and still lists three, oldest V2',
-      app.fn('renderAbout')().indexOf('<b>V2</b>') !== -1);
-    A.ok('with V1.1 dropped off the bottom',
-      app.fn('renderAbout')().indexOf('<b>V1.1</b>') === -1);
+    A.ok('and still lists three, oldest V3',
+      app.fn('renderAbout')().indexOf('<b>V3</b>') !== -1);
+    A.ok('with V2 dropped off the bottom',
+      app.fn('renderAbout')().indexOf('<b>V2</b>') === -1);
     // The amber set is kept in the stylesheet on purpose — it is the one-edit
     // route back if the two apps ever do get confused on a job.
-    A.ok('the V1 amber palette is still recorded', css.indexOf('#b45309') !== -1);
+    //
+    // ⚠ V5 TIGHTENED THIS AND THE REASON MATTERS. It used to search for the
+    // bare hex #b45309, and V5 adopted that exact value as --warn for the
+    // Visual toggle — so from V5 on, the old assertion would have passed with
+    // the recorded palette block DELETED, testing nothing. It now looks for a
+    // value that appears only inside that block.
+    A.ok('the V1 amber palette is still recorded, as a set',
+      css.indexOf('accent-soft #fef3c7') !== -1);
+    A.ok('and its dark counterpart', css.indexOf('#451a03') !== -1);
   });
 
   // --- V3: the sheet / keyboard fix ---------------------------------------
