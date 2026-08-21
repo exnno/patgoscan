@@ -203,15 +203,34 @@ li { margin-bottom: 8px; }
    the eye two "which one am I in?" questions and an instant answer to neither.
    These are shorter, carry a standing label, and sit on the page rather than in
    a tinted well. Do not promote them to match the mode switch. */
-.togrow {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 8px;
+/* ⚠ V7 — ONE GRID FOR BOTH ROWS, AND THE TWO SWITCHES ARE THE SAME WIDTH
+   BECAUSE OF IT. Before V7 each row was its own flex container with the label
+   column pinned at `flex: 0 0 74px`. "INSPECTION" is wider than 74px at 13px
+   uppercase, and a flex item will not shrink below its own unbroken word, so
+   that row's label took the space out of its switch — leaving the Test/Visual
+   control visibly narrower than Class 1/Class 2 directly above it.
+
+   `max-content` on the first column sizes it to the LONGEST label of the two
+   rows and `1fr` gives the rest to the switches, so they are identical by
+   construction rather than by a number that happens to fit today. ⚠ DO NOT
+   REPLACE THIS WITH A WIDER FIXED WIDTH — rewording a label would silently
+   reintroduce the same mismatch, and it is small enough that nobody reports it.
+
+   `display: contents` on the rows is what lets each row's two children take
+   part in the parent grid. The rows keep their class, so `.togrow.is-visual
+   .tog-label` still colours the label. Margins do not apply to a contents box,
+   which is why the row gap moved onto the grid. */
+.toggrid {
+  display: grid; grid-template-columns: max-content 1fr;
+  align-items: center; column-gap: 10px; row-gap: 8px; margin-bottom: 14px;
 }
+.togrow { display: contents; }
 .tog-label {
-  flex: 0 0 74px; font-size: 13px; font-weight: 650; color: var(--ink-soft);
+  font-size: 13px; font-weight: 650; color: var(--ink-soft);
   text-transform: uppercase; letter-spacing: .04em;
 }
 .togswitch {
-  flex: 1; display: flex; gap: 4px; padding: 3px;
+  display: flex; gap: 4px; padding: 3px;
   background: var(--bg-alt); border: 1px solid var(--line);
   border-radius: 10px;
 }
@@ -240,9 +259,10 @@ li { margin-bottom: 8px; }
 }
 .togrow.is-visual .tog-label { color: var(--warn); }
 
-/* The last toggle row carries the gap down to the scan box, so the two rows
-   read as one group rather than as two unrelated strips. */
-.togrow:last-of-type { margin-bottom: 14px; }
+/* ⚠ THE GAP DOWN TO THE SCAN BOX NOW LIVES ON .toggrid (margin-bottom above).
+   A margin on .togrow would do nothing at all — a `display: contents` box
+   generates no box to hang one on — and it would fail silently, which is the
+   whole reason this note is here rather than the rule. */
 
 /* @@ scan --------------------------------------------------------------- */
 .scanbox {
@@ -615,3 +635,79 @@ label.btn-wide { line-height: 24px; }
   transition: transform .18s;
 }
 .toggle.is-on .knob { transform: translateX(21px); }
+
+/* @@ sessions (V7) -------------------------------------------------------- */
+/* The strip at the foot of the scan screen naming the current session.
+   ⚠ QUIET BY DESIGN, BUT IT IS NOT DECORATION. Export is scoped to the session
+   and so are the counts above it, so a phone left in yesterday's batch reports
+   plausible numbers for the wrong work. This is the cheapest thing that makes
+   that visible before it costs a file. Deliberately calmer than .locbar — the
+   location bar is a control you use every few minutes, this is a label you
+   check twice a day. */
+.sessionstrip {
+  display: flex; align-items: baseline; gap: 8px; width: 100%;
+  margin-top: 10px; padding: 8px 12px;
+  background: none; border: 1px solid var(--line); border-radius: 10px;
+  text-align: left; cursor: pointer;
+}
+.sessionstrip-label {
+  font-size: 11px; font-weight: 650; color: var(--ink-soft);
+  text-transform: uppercase; letter-spacing: .05em;
+}
+.sessionstrip-name {
+  font-size: 14px; font-weight: 600; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* The session you are working in, shown on its own above the list.
+   ⚠ NOT A HIGHLIGHTED ROW IN THE LIST. Every action on that screen is relative
+   to "which one am I in", and an answer expressed as a background shade is an
+   answer that gets missed. */
+.sescur {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 12px 14px; margin-bottom: 10px;
+  background: var(--bg-alt); border: 1px solid var(--line); border-radius: 12px;
+}
+.sescur-name { font-size: 17px; font-weight: 700; color: var(--ink); }
+.sescur-sub { font-size: 13px; color: var(--ink-soft); }
+
+.seslist { display: flex; flex-direction: column; gap: 8px; }
+.seslist-row {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line); border-radius: 12px;
+}
+.seslist-row.is-current { border-color: var(--accent); }
+.seslist-main { display: flex; align-items: baseline; gap: 8px; }
+.seslist-name { font-size: 16px; font-weight: 650; color: var(--ink); }
+.seslist-tag {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--accent);
+}
+.seslist-tag.is-closed { color: var(--ink-soft); }
+.seslist-sub { font-size: 13px; color: var(--ink-soft); }
+/* Wraps rather than scrolls: a row can carry up to five actions and a
+   horizontal scroller inside a vertical list is how the last one never gets
+   found. */
+.seslist-acts { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 4px; }
+
+/* @@ duplicate review (V7) ------------------------------------------------ */
+/* ⚠ THE TWO CHOICES ARE THE SAME SIZE AND THE SAME WEIGHT. Whichever result
+   goes to the client is the one that counts, and a layout that made either side
+   look like the safe default would be putting a thumb on the scale of somebody
+   else's work. The only thing that distinguishes them is which is selected. */
+.revall { display: flex; gap: 18px; margin-bottom: 12px; }
+.revrow {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 12px 0; border-top: 1px solid var(--line);
+}
+.revrow-code { font-size: 16px; font-weight: 700; color: var(--ink); }
+.revopt {
+  display: flex; flex-direction: column; gap: 2px; width: 100%;
+  padding: 10px 12px; text-align: left; cursor: pointer;
+  background: none; border: 1px solid var(--line); border-radius: 10px;
+}
+.revopt.is-on { border-color: var(--accent); background: var(--bg-alt); }
+.revopt-who { font-size: 14px; font-weight: 650; color: var(--ink); }
+.revopt-detail { font-size: 13px; color: var(--ink-soft); }
+.revcommit { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }

@@ -68,6 +68,13 @@ function normaliseRecord(r) {
     ts: (typeof r.ts === 'number' && isFinite(r.ts)) ? r.ts : Date.now(),
     engineer: cleanText(r.engineer, 60),
     exported: r.exported === true,
+    // V7 — the session this record belongs to. ⚠ AN EMPTY ONE IS NOT AN ERROR
+    // AND MUST NOT BE INVENTED HERE. Every record written before V7 has no
+    // sessionId at all, and so does every record in a V6 backup restored next
+    // year. They are adopted in one pass by adoptOrphanRecords() below, which
+    // can see the whole log at once and name a session after the range it
+    // covers; a per-record default here would make one session per record.
+    sessionId: isNonEmptyString(r.sessionId) ? r.sessionId : '',
   };
 
   if (type === 'item') {
@@ -113,6 +120,99 @@ function normaliseRecords(arr) {
     out.push(r);
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// V7 — sessions
+//
+// ⚠ A SESSION IS NEVER DROPPED FOR BEING MALFORMED, only repaired. Dropping one
+// orphans every record pointing at it, and the adoption pass below would then
+// sweep those records into a NEW session with a machine-generated name — so a
+// missing name would cost the engineer the name they actually chose. The
+// validator rule applies as everywhere else: garbage collapses to a safe
+// default and never throws.
+function normaliseSession(s) {
+  if (!s || typeof s !== 'object') return null;
+  const ts = (typeof s.ts === 'number' && isFinite(s.ts)) ? s.ts : Date.now();
+  const closed = (typeof s.closedAt === 'number' && isFinite(s.closedAt) && s.closedAt > 0)
+    ? s.closedAt : 0;
+  return {
+    id: isNonEmptyString(s.id) ? s.id : uid('ses'),
+    name: cleanText(s.name, SESSION_NAME_MAX) || defaultSessionName(ts),
+    ts: ts,
+    closedAt: closed,
+    // Whose work this is. Carried on the session as well as on every record so
+    // an imported session says who it came from before you open it.
+    engineer: cleanText(s.engineer, 60),
+  };
+}
+
+function normaliseSessions(arr) {
+  if (!Array.isArray(arr)) return [];
+  const out = [];
+  const seen = {};
+  for (let i = 0; i < arr.length; i++) {
+    const ses = normaliseSession(arr[i]);
+    if (!ses) continue;
+    // Duplicate ids would make "which session is this record in" ambiguous and
+    // send the wrong batch to the client. Re-id rather than drop.
+    if (seen[ses.id]) ses.id = uid('ses');
+    seen[ses.id] = 1;
+    out.push(ses);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// V7 — THE SESSION MIGRATION (decision 4A)
+//
+// Every record written before V7 has no `sessionId`. They are adopted in ONE
+// pass into a single session named after the range they cover, which is the
+// honest description of what they are: the work that was on the phone before
+// sessions existed.
+//
+// ⚠ IT ALSO CATCHES DANGLING POINTERS, not just absent ones. A record naming a
+// session that is not in the list is in exactly the same position as a record
+// naming none — invisible on the sessions screen and, with export scoped to the
+// session (3B), MISSING FROM EVERY FILE THE APP WOULD EVER WRITE. That is the
+// failure this pass exists to make impossible, and it is why it runs on every
+// load rather than once behind an "upgraded" flag.
+//
+// ⚠ DO NOT DELETE IT ONCE "EVERYBODY HAS UPGRADED", for the same reason the V6
+// class migration is still here. Backups are files: a V6 backup restored in
+// 2028 arrives with no sessions in it at all.
+function adoptOrphanRecords() {
+  const orphans = [];
+  for (let i = 0; i < state.records.length; i++) {
+    const r = state.records[i];
+    if (!r.sessionId || !sessionById(r.sessionId)) orphans.push(r);
+  }
+  if (!orphans.length) return false;
+
+  let lo = orphans[0].ts || Date.now();
+  let hi = lo;
+  for (let i = 1; i < orphans.length; i++) {
+    const t = orphans[i].ts || lo;
+    if (t < lo) lo = t;
+    if (t > hi) hi = t;
+  }
+
+  const ses = normaliseSession({
+    id: uid('ses'),
+    name: sessionRangeName(lo, hi),
+    ts: lo,
+    closedAt: 0,
+    engineer: state.engineer || '',
+  });
+  state.sessions.push(ses);
+  for (let i = 0; i < orphans.length; i++) orphans[i].sessionId = ses.id;
+
+  // ⚠ IT ONLY TAKES OVER AS CURRENT WHEN THERE IS NO CURRENT SESSION. On the
+  // V6 → V7 upgrade there is none, so this is the work the engineer is already
+  // in the middle of and they land back in it. If a session IS open, a handful
+  // of orphans arriving from a restore must not yank them out of it mid-job.
+  if (!state.currentSessionId) state.currentSessionId = ses.id;
+  return true;
 }
 
 function normaliseStringList(arr, fallbackFn, max) {
@@ -227,6 +327,17 @@ function normaliseReading(v, fallback) {
 // ---------------------------------------------------------------------------
 function load() {
   state.records = normaliseRecords(_parseJSON(_lsGet(RECORDS_KEY), []));
+
+  // V7 — sessions, then the adoption pass, then the open-session invariant.
+  // ⚠ THE ORDER IS LOAD-BEARING. Adoption has to see the session list to tell a
+  // dangling pointer from a good one, and ensureOpenSession() has to run after
+  // adoption or it would open an empty session beside the one just built and
+  // leave the engineer looking at the wrong batch.
+  state.sessions = normaliseSessions(_parseJSON(_lsGet(SESSIONS_KEY), []));
+  const wantSession = cleanText(_lsGet(CURRENT_SESSION_KEY), 60);
+  state.currentSessionId = sessionById(wantSession) ? wantSession : '';
+  adoptOrphanRecords();
+  ensureOpenSession();
   state.engineer = cleanText(_lsGet(ENGINEER_KEY), 60);
   state.mode = normaliseMode(_lsGet(MODE_KEY));
 
@@ -273,6 +384,16 @@ function saveRecords() {
   return _lsSet(RECORDS_KEY, JSON.stringify(state.records));
 }
 
+// V7. ⚠ SEPARATE FROM saveRecords() BUT ALMOST ALWAYS WRITTEN WITH IT. A record
+// list naming sessions that were never written is the dangling-pointer case
+// adoptOrphanRecords() has to repair on the next load, and the repair costs the
+// engineer their session names. Anything that moves records between sessions
+// calls both.
+function saveSessions() {
+  _lsSet(SESSIONS_KEY, JSON.stringify(state.sessions));
+  _lsSet(CURRENT_SESSION_KEY, state.currentSessionId || '');
+}
+
 function savePrefs() {
   _lsSet(ENGINEER_KEY, state.engineer || '');
   _lsSet(MODE_KEY, state.mode);
@@ -300,6 +421,7 @@ function saveLists() {
 // than one area.
 function save() {
   saveRecords();
+  saveSessions();
   savePrefs();
   saveLists();
 }

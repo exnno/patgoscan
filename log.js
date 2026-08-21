@@ -50,8 +50,13 @@ function locationRecordById(id) {
   return (r && r.type === 'location') ? r : null;
 }
 
+// ⚠ V7 — AND IT MUST BELONG TO THE CURRENT SESSION. switchToSession() clears
+// the sticky id, but a restore or an adoption pass can seat an id from another
+// batch, and a location resolved out of the wrong session would stamp the next
+// scan with a location the export is never going to write a row for.
 function currentLocation() {
-  return locationRecordById(state.currentLocationId);
+  const loc = locationRecordById(state.currentLocationId);
+  return (loc && inCurrentSession(loc)) ? loc : null;
 }
 
 function currentLocationCode() {
@@ -113,8 +118,14 @@ function itemLocationShort(rec) {
   return isNonEmptyString(rec.locationCode) ? rec.locationCode : '';
 }
 
+// ⚠ V7: SCOPED TO THE CURRENT SESSION, and so is nearly everything below it.
+// Once another engineer's session can sit in the same record list, "the log"
+// stops meaning "every record on the phone" — showing Dave's items mixed into
+// today's counts, today's totals and today's export is wrong in every one of
+// those places. The ONE deliberate exception is unexportedCount(), which stays
+// global because clearing is global; see the note on it.
 function itemRecords() {
-  return state.records.filter(r => r.type === 'item');
+  return state.records.filter(r => r.type === 'item' && inCurrentSession(r));
 }
 
 // ---------------------------------------------------------------------------
@@ -144,14 +155,14 @@ function locationChoices(sampleMax) {
   const byId = {};
   for (let i = 0; i < state.records.length; i++) {
     const r = state.records[i];
-    if (r.type !== 'location') continue;
+    if (r.type !== 'location' || !inCurrentSession(r)) continue;
     const row = { rec: r, count: 0, samples: [] };
     byId[r.id] = row;
     locs.push(row);
   }
   // Newest item first, so `samples` holds the most recently tested things —
   // what the engineer did last in that room is what they remember about it.
-  const items = state.records.filter(r => r.type === 'item').sort(byNewest);
+  const items = state.records.filter(r => r.type === 'item' && inCurrentSession(r)).sort(byNewest);
   for (let i = 0; i < items.length; i++) {
     const row = byId[items[i].locationId];
     if (!row) continue;
@@ -162,6 +173,11 @@ function locationChoices(sampleMax) {
   return locs.sort((a, b) => byNewest(a.rec, b.rec));
 }
 
+// ⚠ V7: DELIBERATELY GLOBAL, unlike everything else here. It answers the clear
+// path and the export nudge, and both of those are about the WHOLE phone:
+// clearing destroys every session, so refusing while ANY session holds unsent
+// work is the only safe reading. Scoping this to the current session would let
+// an engineer clear away a session they had never exported.
 function unexportedCount() {
   let n = 0;
   for (let i = 0; i < state.records.length; i++) {
@@ -173,17 +189,26 @@ function unexportedCount() {
 // ---------------------------------------------------------------------------
 // Duplicate detection (decision 4 — warn and offer overwrite)
 //
-// Scoped to items only, and to the WHOLE log rather than to the current
-// location: the engineer walking back through a corridor they have already done
-// is exactly the case worth catching, and that is a different location by
-// definition.
+// Scoped to items only, and to the whole of the CURRENT SESSION rather than to
+// the current location: the engineer walking back through a corridor they have
+// already done is exactly the case worth catching, and that is a different
+// location by definition.
+//
+// ⚠ V7 — AND SCOPED TO THE CURRENT SESSION, WHICH IS NEW AND LOAD-BEARING.
+// Before sessions this searched every record on the phone, which was the same
+// thing. It is not the same thing once another engineer's session can be sat
+// beside yours: scanning an asset Dave already tested would offer to REPLACE
+// DAVE'S RECORD, silently editing another engineer's finished work in a session
+// you are not even looking at. The cross-engineer case is the review screen's
+// job (decisions 9A/10A) and it is a different question asked at a different
+// time. Mutation M139.
 // ---------------------------------------------------------------------------
 function findItemByCode(code, exceptId) {
   const want = cleanText(code, SCAN_MAX_LENGTH).toLowerCase();
   if (!want) return null;
   for (let i = 0; i < state.records.length; i++) {
     const r = state.records[i];
-    if (r.type !== 'item') continue;
+    if (r.type !== 'item' || !inCurrentSession(r)) continue;
     if (exceptId && r.id === exceptId) continue;
     if (String(r.code).toLowerCase() === want) return r;
   }
@@ -195,7 +220,11 @@ function findLocationByCode(code) {
   if (!want) return null;
   for (let i = 0; i < state.records.length; i++) {
     const r = state.records[i];
-    if (r.type === 'location' && String(r.code).toLowerCase() === want) return r;
+    // ⚠ V7 — CURRENT SESSION ONLY, for the same reason findItemByCode() is.
+    // Reusing a location record out of Dave's session would file today's items
+    // under a location that belongs to a batch this export will never write.
+    if (r.type === 'location' && inCurrentSession(r) &&
+        String(r.code).toLowerCase() === want) return r;
   }
   return null;
 }
@@ -239,6 +268,7 @@ function addLocationRecord(code, mode, fields) {
     ts: Date.now(),
     engineer: state.engineer || '',
     exported: false,
+    sessionId: sessionIdForNewRecord(),
     client: cleanText(fields && fields.client, 80),
     floor: cleanText(fields && fields.floor, 60),
     room: cleanText(fields && fields.room, 60),
@@ -296,6 +326,7 @@ function addItemRecord(pending, result, failReason) {
     ts: Date.now(),
     engineer: state.engineer || '',
     exported: false,
+    sessionId: sessionIdForNewRecord(),
     result: outcome,
     failReason: outcome === 'fail' ? cleanText(failReason, 120) : '',
     description: cleanText(pending.description, 80),
@@ -577,13 +608,16 @@ function lastItemRecord() {
   let best = null;
   for (let i = 0; i < state.records.length; i++) {
     const r = state.records[i];
-    if (r.type !== 'item') continue;
+    if (r.type !== 'item' || !inCurrentSession(r)) continue;
     if (!best || byNewest(r, best) < 0) best = r;
   }
   return best;
 }
 
-// V6 (13D) — totals across the WHOLE log, not the day.
+// V6 (13D) — totals across the whole log, not the day. ⚠ V7: "the whole log"
+// now means the whole of the CURRENT SESSION. The label on screen says which
+// session it is counting, because a number that silently changed meaning when
+// sessions arrived would be worse than no number.
 //
 // ⚠ THIS IS A DIFFERENT NUMBER FROM todayCounts() BELOW AND THE LABEL MUST SAY
 // SO. Two count strips that look identical and disagree is worse than one, and
@@ -592,6 +626,7 @@ function logTotals() {
   let pass = 0, fail = 0, locs = 0;
   for (let i = 0; i < state.records.length; i++) {
     const r = state.records[i];
+    if (!inCurrentSession(r)) continue;
     if (r.type === 'location') { locs++; continue; }
     if (r.result === 'fail') fail++;
     else if (r.result === 'pass') pass++;
@@ -606,7 +641,7 @@ function todayCounts() {
   let pass = 0, fail = 0, locs = 0;
   for (let i = 0; i < state.records.length; i++) {
     const r = state.records[i];
-    if ((r.ts || 0) < from) continue;
+    if ((r.ts || 0) < from || !inCurrentSession(r)) continue;
     if (r.type === 'location') { locs++; continue; }
     if (r.result === 'fail') fail++;
     else if (r.result === 'pass') pass++;

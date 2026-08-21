@@ -7,13 +7,13 @@
  * read in one place — that is what makes the backup file provably complete.
  */
 
-const APP_VERSION = 'V6';
+const APP_VERSION = 'V7';
 
 // The welcome modal key carries the version IN THE VALUE, never in the
 // identifier. A version-named identifier caused a white screen in the parent
 // app (PATGo v61) when one file was updated and another was not.
 const WELCOME_KEY = 'scan:welcome';
-const WELCOME_VERSION = 'V6';
+const WELCOME_VERSION = 'V7';
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -46,6 +46,28 @@ const THEME_KEY          = 'scan:theme';         // 'light' | 'dark' | 'auto'
 const HAPTIC_KEY         = 'scan:haptic';        // '1' | '0', DEFAULT ON
 const SOUND_KEY          = 'scan:sound';         // '1' | '0', DEFAULT OFF
 const EXPORT_REMIND_KEY  = 'scan:exportReminded';
+
+// V7 — SESSIONS. A session is a named boundary around a batch of work, and
+// every record belongs to exactly one.
+//
+// ⚠ THE SESSION IS THE UNIT OF EXPORT (decision 3B). Export writes the WHOLE of
+// the current session every time, exported before or not — not a delta. That is
+// what makes a re-export after an edit a complete, self-consistent file rather
+// than a handful of loose corrections the client has to reconcile against
+// something they were sent that morning.
+const SESSIONS_KEY        = 'scan:sessions';       // JSON [{id,name,ts,closedAt,engineer}]
+const CURRENT_SESSION_KEY = 'scan:currentSession'; // id of the session being worked in
+const SESSION_NAME_MAX    = 60;
+
+// ⚠ TWO JSON FILES LEAVE THIS APP AND THEY DO OPPOSITE THINGS. A backup
+// REPLACES everything on the phone; a session file MERGES. Picking the wrong
+// one at the end of a Friday is somebody's whole day gone, so each file
+// announces its kind and each import path refuses the other by name — see the
+// guards in backup.js and sessions.js. The value is written into the file and
+// must never be changed once shipped: an older build reads it to decide whether
+// to refuse.
+const SESSION_FILE_KIND    = 'session';
+const SESSION_FILE_VERSION = 1;
 
 // ⚠ FLAG POLARITY. Default-ON flags are read `!== '0'` (absent means on).
 // Default-OFF flags are read `=== '1'` (absent means off). Copying the wrong
@@ -330,4 +352,9 @@ function csvLocationDescriptor(ctx, field) {
   return loc[field] || '';
 }
 
-const BACKUP_VERSION = 2;
+// ⚠ V7: 3. Records gained `sessionId` and the file gained `sessions`. Additive
+// fields do not normally spend a bump — what spends this one is the BACKWARD
+// direction: a V7 backup restored onto a V6 phone loses every session boundary
+// silently, and with export scoped to the session (3B) that phone would then
+// export a different set of rows than the one the file was taken from.
+const BACKUP_VERSION = 3;

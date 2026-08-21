@@ -21,6 +21,19 @@ let state = {
 
   // --- Persisted data -------------------------------------------------------
   records: [],               // the scan log. See log.js for the record shape.
+
+  // V7 — SESSIONS. `sessions` is the list; `currentSessionId` is the one being
+  // worked in. Every record carries a `sessionId` naming its session.
+  //
+  // ⚠ THERE IS ALWAYS EXACTLY ONE OPEN SESSION AND IT IS ALWAYS THE CURRENT
+  // ONE. ensureOpenSession() (sessions.js) restores that invariant on load and
+  // before anything writes a record, so no path in the app has to cope with
+  // "there is nowhere to put this scan". Closing the last open session opens a
+  // fresh one rather than leaving the engineer somewhere they cannot work.
+  //   session: { id, name, ts, closedAt, engineer }
+  //   closedAt — 0 while open, a timestamp once closed.
+  sessions: [],
+  currentSessionId: '',
   engineer: '',              // stamped on every record and into the filename
   mode: MODE_AUDIT,          // sticky across restarts — decision 2A
   currentLocationId: '',     // id of the location record now in force
@@ -82,12 +95,23 @@ let state = {
   editSheet: null,           // { id } — correcting a record from the log
   confirmSheet: null,
   infoSheet: null,
+  // V7 — naming a session and picking a merge target both go through the
+  // SHARED sheets in feedback.js (openNameSheet) and a picker built the way the
+  // V4 location picker is. Neither needs a state flag: rule 3 keeps sheets out
+  // of render()'s output entirely.
 
   // --- Transient: UI --------------------------------------------------------
   welcomeSeen: true,         // set false by load() when the modal is due
   toast: '',
   updateBanner: false,
   logSearch: '',
+  // V7 — the duplicate review, held open until every collision is answered.
+  //   { incoming: [records], sessionMeta: {…}, collisions: [{code, mine, theirs}],
+  //     choices: { code: 'mine' | 'theirs' }, mode: 'import' | 'merge', intoId }
+  // ⚠ TRANSIENT ON PURPOSE. A half-answered review must not survive a restart:
+  // the incoming records have not been written anywhere yet, and resuming into
+  // a half-remembered decision is worse than being handed the file again.
+  review: null,
   scannerTestLog: [],        // diagnostic rows, settings scanner page only
   bugDraft: null,
 

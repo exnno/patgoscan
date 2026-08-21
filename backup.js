@@ -10,7 +10,7 @@
  * set. A backup that restores under different rules than a load can produce a
  * state the app has never been tested against.
  *
- * ⚠ backupVersion IS 2 AS OF V6, AND ADDITIVE FIELDS STILL DO NOT SPEND A BUMP.
+ * ⚠ backupVersion IS 3 AS OF V7, AND ADDITIVE FIELDS STILL DO NOT SPEND A BUMP.
  * Unknown fields are ignored by the validators and known-but-absent ones fall
  * back to their defaults, so adding a field is always backwards compatible.
  *
@@ -21,9 +21,23 @@
  * one of those records would export a blank class with nothing on screen to say
  * so. Hence the newer-than-us guard in restoreBackupObject().
  *
+ * WHAT SPENT THE V7 BUMP: records gained `sessionId` and the file gained
+ * `sessions`, which is additive and would normally ride through for free. The
+ * BACKWARD direction is what costs: a V7 backup restored onto a V6 phone loses
+ * every session boundary, and because export is scoped to the session from V7
+ * (decision 3B) that phone would then write a file covering a different set of
+ * rows than the one the backup was taken from — silently, and looking correct.
+ *
  * ⚠ A BOOLEAN RESTORES ONLY WHEN THE BACKUP ACTUALLY HOLDS ONE. Absence is not
  * "off" — an older backup that predates a flag must leave that flag at its
  * default, not switch it off for everybody who restores.
+ *
+ * ⚠⚠ A BACKUP IS NOT A SESSION FILE AND THE TWO MUST NEVER BE CONFUSED. This
+ * one REPLACES the phone; a session file MERGES into it. They are both .json,
+ * they sit next to each other in the Files app, and picking the wrong one at
+ * the end of a Friday costs a day's work. Each import path refuses the other by
+ * name — see the guard in restoreBackupObject() and _describeWrongKind() in
+ * sessions.js.
  */
 
 function buildBackup() {
@@ -35,6 +49,12 @@ function buildBackup() {
     engineer: state.engineer || '',
     mode: state.mode,
     currentLocationId: state.currentLocationId || '',
+    // V7 — the session list and which one was being worked in. ⚠ WITHOUT THESE
+    // EVERY RECORD IN THE FILE IS AN ORPHAN on restore, and the adoption pass in
+    // storage.js sweeps the lot into one machine-named session — which is not
+    // data loss, but it is the loss of every name the engineer chose.
+    sessions: state.sessions,
+    currentSessionId: state.currentSessionId || '',
     records: state.records,
     failReasons: state.failReasons,
     descriptions: state.descriptions,
@@ -104,6 +124,20 @@ function restoreBackupObject(obj) {
     showToast('That backup is from a different app');
     return false;
   }
+  // ⚠ V7 — AND A SESSION FILE IS REFUSED HERE BY NAME. This path REPLACES the
+  // phone. A session file restored through it would throw away every other
+  // session to install one, which is the single most expensive mistake
+  // available in this app and is one tap away in the Files app. Told plainly,
+  // with the right route, because the engineer has almost certainly just picked
+  // the wrong one of two files with nearly identical names.
+  if (obj.kind === SESSION_FILE_KIND) {
+    openInfoSheet({
+      title: 'That is a session, not a backup',
+      body: 'Restoring a backup would replace everything on this phone. To add ' +
+            'that session to what you already have, go to Sessions and import it there.',
+    });
+    return false;
+  }
   if (!Array.isArray(obj.records)) {
     showToast('That file has no records in it');
     return false;
@@ -120,6 +154,15 @@ function restoreBackupObject(obj) {
   }
 
   state.records = normaliseRecords(obj.records);
+  // V7. ⚠ THROUGH THE SAME VALIDATORS load() USES, and BEFORE the adoption pass
+  // below — a backup written by V6 has no `sessions` key at all, so the list
+  // comes back empty and every record in it is adopted into one session named
+  // after the range it covers, exactly as it would be on an upgrading phone.
+  state.sessions = normaliseSessions(obj.sessions);
+  const wantSession = cleanText(obj.currentSessionId, 60);
+  state.currentSessionId = sessionById(wantSession) ? wantSession : '';
+  adoptOrphanRecords();
+  ensureOpenSession();
   state.engineer = cleanText(obj.engineer, 60);
   state.mode = normaliseMode(obj.mode);
   state.failReasons = normaliseStringList(obj.failReasons, makeDefaultFailReasons, 40);
@@ -206,8 +249,16 @@ function clearExportedRecords() {
     danger: true,
     onConfirm: () => {
       state.records = [];
+      // V7 — the sessions go with the records they described. ⚠ LEAVING THEM
+      // WOULD LEAVE A SCREEN FULL OF NAMED, EMPTY BATCHES that look like work
+      // and are not; a single fresh session is the honest state of a phone with
+      // nothing on it.
+      state.sessions = [];
+      state.currentSessionId = '';
       state.currentLocationId = '';
+      ensureOpenSession();
       saveRecords();
+      saveSessions();
       savePrefs();
       showToast('Cleared');
       setView('scan');

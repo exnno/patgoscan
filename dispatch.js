@@ -405,9 +405,120 @@ const ACTIONS = {
   // ⚠ These call straight through to csv.js with nothing asynchronous in
   // between. iOS revokes the user gesture across an await, and without the
   // gesture navigator.share() silently does nothing.
-  exportNew:    () => exportCSV(true),
-  exportAll:    () => exportCSV(false),
-  copyCsv:      () => copyCSV(false),
+  // ---------------------------------------------------------------------
+  // V7 — SESSIONS
+  //
+  // ⚠ EVERY DESTRUCTIVE OR DIRECTION-CHANGING ONE CONFIRMS. Switching, closing
+  // and reopening all change which batch the next scan lands in and which
+  // records the next export writes, and none of that is visible from the tap
+  // itself. Rename and share change nothing and go straight through.
+  // ---------------------------------------------------------------------
+  goSessions: () => setView('sessions'),
+
+  newSession: () => {
+    openNameSheet({
+      title: 'Start a new session',
+      body: 'Everything you scan from now on goes into it. The one you are in now stays exactly as it is.',
+      value: defaultSessionName(Date.now()),
+      placeholder: 'Name this batch',
+      confirmLabel: 'Start',
+      onConfirm: (name) => {
+        const ses = createSession(name);
+        showToast('Working in ' + ses.name);
+        setView('scan');
+      },
+      onCancel: () => render(),
+    });
+  },
+
+  switchSession: (arg) => {
+    const ses = sessionById(arg);
+    if (!ses) return;
+    openConfirmSheet({
+      title: 'Work in ' + ses.name + '?',
+      body: 'Everything you scan will go into it, and exporting will send the whole of it. Your current location is cleared, so scan the room again when you start.',
+      confirmLabel: 'Switch',
+      onConfirm: () => { switchToSession(ses.id); showToast('Working in ' + ses.name); setView('scan'); },
+      onCancel: () => render(),
+    });
+  },
+
+  renameSession: (arg) => {
+    const ses = sessionById(arg);
+    if (!ses) return;
+    openNameSheet({
+      title: 'Rename session',
+      value: ses.name,
+      confirmLabel: 'Save',
+      onConfirm: (name) => { renameSession(ses.id, name); render(); },
+      onCancel: () => render(),
+    });
+  },
+
+  closeSession: (arg) => {
+    const ses = sessionById(arg);
+    if (!ses) return;
+    const c = sessionCounts(ses.id);
+    openConfirmSheet({
+      title: 'Close ' + ses.name + '?',
+      body: (c.unexported ? c.unexported + ' record' + (c.unexported === 1 ? ' has' : 's have') +
+             ' not been exported yet. Closing keeps everything — you can still export it, and you can reopen it later. '
+           : 'Nothing is deleted. You can reopen it later. ') +
+            'You will be moved to a new session for anything you scan next.',
+      confirmLabel: 'Close it',
+      onConfirm: () => { closeSession(ses.id); showToast('Closed ' + ses.name); render(); },
+      onCancel: () => render(),
+    });
+  },
+
+  // Decision 5B — reopening is allowed, and it asks first. ⚠ THE WARNING IS THE
+  // POINT OF THE DECISION. A closed session has usually been sent to the
+  // client; adding to it means the next export sends the whole thing again, and
+  // an engineer who reopens one by accident would have no way to tell from the
+  // scan screen that today's work is landing in last Tuesday's batch.
+  reopenSession: (arg) => {
+    const ses = sessionById(arg);
+    if (!ses) return;
+    openConfirmSheet({
+      title: 'Are you sure?',
+      body: ses.name + ' was closed. Reopening it makes it the session you are working in, so everything you scan next goes into it — and the next export sends the whole of it again, not just what you add.',
+      confirmLabel: 'Reopen it',
+      onConfirm: () => { reopenSession(ses.id); showToast('Working in ' + ses.name); setView('scan'); },
+      onCancel: () => render(),
+    });
+  },
+
+  deleteSession: (arg) => {
+    const ses = sessionById(arg);
+    if (!ses) return;
+    openConfirmSheet({
+      title: 'Delete ' + ses.name + '?',
+      body: 'It has nothing in it, so nothing is lost.',
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: () => { deleteEmptySession(ses.id); showToast('Deleted'); render(); },
+      onCancel: () => render(),
+    });
+  },
+
+  // ⚠ CALLED STRAIGHT FROM THE TAP, no confirm and nothing asynchronous before
+  // it — iOS revokes the user gesture across an await and the share sheet never
+  // appears. Same rule as the CSV export and the backup.
+  shareSession: (arg) => exportSessionFile(arg),
+
+  mergeSession: (arg) => openMergePickerSheet(arg),
+
+  reviewPick: (arg) => {
+    const parts = String(arg || '').split('|');
+    reviewChoose(parts[0], parts[1]);
+  },
+  reviewAll:    (arg) => reviewChooseAll(arg),
+  reviewCommit: () => commitReview(),
+  cancelReview: () => { cancelReview(); setView('sessions'); },
+
+  // V7 (3B) — one export, and it writes the whole current session.
+  exportNew:    () => exportCSV(),
+  copyCsv:      () => copyCSV(),
   exportBackup: () => exportBackup(),
   clearExported: () => clearExportedRecords(),
 
@@ -449,6 +560,14 @@ const CHANGE_ACTIONS = {
     // nothing the second time — the change event never happens.
     el.value = '';
     if (f) importBackupFile(f);
+  },
+  // V7. ⚠ SAME CLEAR-THE-INPUT RULE, and it bites harder here: an engineer who
+  // cancels a review and then picks the same file again is the expected way to
+  // use this screen, not an edge case.
+  importSession: (el) => {
+    const f = el.files && el.files[0];
+    el.value = '';
+    if (f) importSessionFile(f);
   },
 };
 

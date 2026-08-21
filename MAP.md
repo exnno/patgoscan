@@ -82,12 +82,12 @@ you cannot discover by reading one file. Read this to decide *what to open*.
 
 ---
 
-## Load order (index.html) — 13 first-party files
+## Load order (index.html) — 14 first-party files
 
 `config` → `state` → `utils` → `storage` → `log` → `feedback` → `scanner`
-→ `csv` → `backup` → `bugreport` → `render` → `dispatch` → `boot`
+→ `csv` → `backup` → `sessions` → `bugreport` → `render` → `dispatch` → `boot`
 
-`sw.js` ASSETS lists 19 entries: these 13 plus `./`, `index.html`, `styles.css`,
+`sw.js` ASSETS lists 20 entries: these 14 plus `./`, `index.html`, `styles.css`,
 `manifest.webmanifest` and the two icons. No vendored libraries — there is no
 PDF engine in this app.
 
@@ -279,15 +279,37 @@ one accessor; the harness uses it so a reorder does not turn the suite red.
 directly from the tap: iOS revokes the user gesture across an await.
 **Coupling:** `recordsForExport()` sorts by scan order deliberately — with no
 location rows it is what decides WHICH item row carries a location's floor and
-room.
+room. ⚠ V7: it is scoped to the CURRENT SESSION and returns the whole of it —
+`buildCSV()` takes no argument, so no caller can ask for a delta (decision 3B).
 
 ### backup.js (~190 ln) — backup / restore / clear
 `buildBackup`, restore, the file-kind guard, the clear path.
 **Touch to:** change the JSON shape or the restore path.
 **Coupling:** restores through the SAME validators as `load()` (rule 8). ⚠
-Restore REPLACES, it does not merge — merging needs conflict rules an engineer
-would have to understand mid-job. ⚠ A boolean restores only when the backup
+Restore REPLACES, it does not merge — merging is what `sessions.js` is for, and
+a session file handed to this path is refused by name. ⚠ V7: the file carries
+`sessions`, and the restore path runs `adoptOrphanRecords()` so a V6 backup
+restored in 2028 does not arrive as a pile of orphans. ⚠ A boolean restores only when the backup
 actually holds one; absence ≠ off. Clearing refuses while anything is unexported.
+
+### sessions.js (~470 ln, V7) — sessions, exchange, merge, review
+The spine (create / switch / close / reopen / the open invariant), the session
+file exchange, the merge, and the duplicate review.
+**Touch to:** change what a session is, how one travels between phones, or how a
+duplicate is resolved.
+**Coupling:** ⚠ `ensureOpenSession()` holds the invariant that there is always
+exactly ONE open session and it is current — every write path depends on it, so
+nothing else has to cope with "there is nowhere to put this scan".
+`inCurrentSession()` is the single definition of "my current work" and the whole
+of `log.js` scopes itself with it. ⚠ Import and merge resolve through ONE
+function (`_applyChoice`) — they are the same operation with different labels.
+⚠ A session file MERGES; a backup REPLACES. Each import path refuses the other
+by name. ⚠ The CSV cannot be read back and this is not fixable by trying harder:
+it carries no record id, no time of day, no `mode` column and no `visual`
+column, so an initial visual-only fail and an audit full-test fail come out of
+it byte for byte identical. JSON is the only lossless path.
+**Note:** `adoptOrphanRecords()` lives in `storage.js`, not here — it is a
+load-time data migration and sits with the V6 class migration.
 
 ### bugreport.js (~150 ln) — problem reporting
 Global error capture, diagnostics, the mailto builder.

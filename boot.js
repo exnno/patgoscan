@@ -103,6 +103,7 @@ const REQUIRED_FNS = [
   'initScanner',              // scanner.js
   'buildCSV',                 // csv.js
   'buildBackup',              // backup.js
+  'ensureOpenSession',        // sessions.js
   'render',                   // render.js
   'initDelegation',           // dispatch.js
   'initErrorCapture',         // bugreport.js
@@ -121,7 +122,14 @@ function _constantsPresent() {
            typeof CSV_COLUMNS !== 'undefined' &&
            _csvColumnsWellFormed() &&
            typeof SCAN_GAP_PRESETS !== 'undefined' &&
-           typeof MODE_AUDIT !== 'undefined';
+           typeof MODE_AUDIT !== 'undefined' &&
+           // V7. ⚠ SESSIONS_KEY EARNS ITS PLACE HERE because a config.js that
+           // loaded without it would let the app run, write records, and save
+           // the session list nowhere — so the next load would adopt every
+           // record into a fresh machine-named session and the engineer's own
+           // names would be gone. That is a silent data-shape failure, which is
+           // exactly what this probe exists to turn into a visible one.
+           typeof SESSIONS_KEY !== 'undefined';
   } catch (e) {
     // A TDZ binding throws rather than reporting undefined — that is a fail.
     return false;

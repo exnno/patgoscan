@@ -107,9 +107,29 @@ function csvRowsForRecords(records) {
 // ⚠ THE ORDER STILL MATTERS EVEN THOUGH LOCATIONS NO LONGER EMIT A ROW. It is
 // what decides WHICH item row carries a location's floor and room — the first
 // one scanned there, not whichever happens to sort first.
-function recordsForExport(onlyUnexported) {
-  const list = state.records.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));
-  return onlyUnexported ? list.filter(r => !r.exported) : list;
+// ⚠ V7 — THE SESSION IS THE UNIT OF EXPORT, AND IT IS THE WHOLE SESSION EVERY
+// TIME (decision 3B). The `onlyUnexported` argument is GONE, not defaulted, so
+// that no caller can ask for a delta and quietly get one.
+//
+// Before V7 a file held whatever had not been sent yet. That made a re-export
+// after a correction a handful of loose rows the client had to reconcile
+// against something they were sent that morning — and it meant a record edited
+// after export went out ALONE, stripped of the context of the batch it belonged
+// to. A session exports complete or not at all: the client's importer treats a
+// repeated asset id as an update, so re-sending a row that has not changed
+// costs nothing and re-sending one that has is the entire point.
+//
+// ⚠ THIS IS ALSO WHAT MAKES DECISION 7A CORRECT AGAIN. Floor and room ride on
+// the first item row of a location IN THIS FILE. Under a delta export, a
+// location initialised on Monday and added to on Tuesday left Tuesday's file
+// with no floor or room anywhere in it — the reason csvRowsForRecords() rebuilds
+// its Set per file. With a whole-session export every file is complete, so the
+// descriptors are always present. The per-file Set stays regardless: it is what
+// makes the property true rather than incidental. Mutation M119, test 13f.
+function recordsForExport() {
+  return state.records
+    .filter(r => inCurrentSession(r))
+    .sort((a, b) => (a.ts || 0) - (b.ts || 0));
 }
 
 // ⚠ V6: THE ROWS AND THE RECORDS-TO-MARK ARE TWO DIFFERENT LISTS, and keeping
@@ -123,16 +143,22 @@ function recordsForExport(onlyUnexported) {
 // check are about: an export of nothing but locations produces an empty file
 // and correctly reports nothing to export, leaving those locations pending for
 // the day items are finally scanned under them.
-function buildCSV(onlyUnexported) {
-  const recs = recordsForExport(onlyUnexported);
+function buildCSV() {
+  const recs = recordsForExport();
   const items = recs.filter(r => r.type === 'item');
   // \r\n, not \n. Excel on Windows is what opens this at the client's end.
   return { text: csvRowsForRecords(items).join('\r\n'), count: items.length, records: recs };
 }
 
+// ⚠ V7 — THE SESSION NAME IS IN THE FILENAME. With export scoped to a session,
+// a folder can hold several files from one phone on one day, and 'patgoscan-
+// 2026-08-20-Pete.csv' twice over is how the wrong one gets sent.
 function exportFilename() {
   const who = cleanText(state.engineer, 40).replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  return 'patgoscan-' + dateStampForFilename() + (who ? '-' + who : '') + '.csv';
+  const what = cleanText(currentSessionName(), 40)
+    .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return 'patgoscan-' + dateStampForFilename() +
+         (what ? '-' + what : '') + (who ? '-' + who : '') + '.csv';
 }
 
 // ---------------------------------------------------------------------------
@@ -146,10 +172,10 @@ function exportFilename() {
 // and revokes it across an await, so nothing asynchronous may happen before
 // navigator.share(). Building the text is synchronous for exactly this reason.
 // ---------------------------------------------------------------------------
-function exportCSV(onlyUnexported) {
-  const built = buildCSV(onlyUnexported);
+function exportCSV() {
+  const built = buildCSV();
   if (!built.count) {
-    showToast(onlyUnexported ? 'Nothing new to export' : 'Nothing to export yet');
+    showToast('Nothing to export in this session yet');
     return;
   }
   const name = exportFilename();
@@ -204,8 +230,8 @@ function markExported(records) {
 
 // Copy to clipboard — the escape hatch when the share sheet misbehaves on a
 // particular phone. Keeps a bad day recoverable by paste.
-function copyCSV(onlyUnexported) {
-  const built = buildCSV(onlyUnexported);
+function copyCSV() {
+  const built = buildCSV();
   if (!built.count) { showToast('Nothing to copy'); return; }
   try {
     navigator.clipboard.writeText(built.text).then(() => {

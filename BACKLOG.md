@@ -10,6 +10,44 @@ things worth considering when the client's actual working day suggests them.
 
 *(Nothing outstanding. Both long-running questions closed in V6.)*
 
+## Closed in V7
+
+- **~~Work saved as sessions.~~** ✅ SHIPPED V7. `sessions.js`, plus the
+  `sessionId` field on every record and the adoption migration in `storage.js`.
+- **~~A sessions screen.~~** ✅ SHIPPED V7. List, switch, name, close, reopen
+  (5B, behind a confirm), merge, share, and delete for an empty session only.
+- **~~Combine sessions and files from other engineers, flagging duplicates.~~**
+  ✅ SHIPPED V7, **as a JSON exchange rather than CSV reading** — see the finding
+  below.
+- **~~Duplicate item warnings (cross-session, cross-engineer).~~** ✅ SHIPPED V7
+  as the review screen. The within-phone scan-time warning is untouched, and is
+  now correctly scoped so it cannot reach into another engineer's session.
+
+### ⚠ THE FINDING THAT RESHAPED THIS GROUP — the CSV cannot be read back
+
+The backlog said the merge "needs CSV reading" and called it the largest new
+capability on the list. That was the wrong answer to the right question, and it
+was answered by running two records through the real export code:
+
+An **initial, visual-only, failed** item and an **audit, fully tested, failed**
+item produce rows that are identical in every column except the asset id.
+
+The CSV is a report written to the client's specification, not a save file. It
+carries **no record id, no time of day, no `mode` column and no `visual`
+column**, and it emits no rows for locations at all. Mode is inferred from
+DESCRIPTION being blank (9A) and visual from the readings being blank (3B) — and
+under 6A a fail carries no readings either way, so that inference is provably
+wrong for some rows. Importing one means writing guesses into the client's
+system.
+
+**If CSV import is ever wanted anyway,** two prerequisites, in order:
+1. **Revisit 6A** — a visual fail and a tested fail must become distinguishable.
+2. **Append the missing fields as columns after ENGINEER** (record id, timestamp,
+   mode, visual), the same move 12B made for ENGINEER. Needs the client's
+   agreement, since it changes what lands in their system. One edit to
+   `CSV_COLUMNS`. Considered for V7 and shelved deliberately: the JSON exchange
+   does the job with no client conversation and no guessing.
+
 ## Closed in V6
 
 - **~~Audited locations as their own CSV rows.~~** ✅ ANSWERED AND DROPPED. Open
@@ -48,35 +86,30 @@ things worth considering when the client's actual working day suggests them.
   armed scanner mode do not belong in the same upload. ⚠ HELD OUT OF V6 FOR THE
   SAME REASON — V6 was the bigger data-shape release of the two. It is now the
   strongest candidate for V7: self-contained, no open questions, and nothing
-  ahead of it in the queue.
+  ahead of it in the queue. ⚠ HELD OUT OF V7 TOO — V7 took the sessions group,
+  which changed the storage shape. Same argument, third time: it is still
+  self-contained, still has no open questions, and is now the strongest
+  candidate for V8.
 - **Naming an audit location retrospectively.** Already possible — tap it in the
   log and fill in Client / Floor / Room — but nothing prompts for it, and the V4
   picker is the first place where an unnamed location visibly costs something.
   If engineers start revisiting sites, a nudge to name a location the second
   time it is scanned might pay for itself. Watch before building.
 
-## Raised in V5 — the sessions group
+## Raised in V7
 
-⚠ **THESE FOUR ARE ONE PIECE OF WORK, NOT FOUR.** Sessions is the spine and the
-other three sit on it; building any of them first means building a private
-version of sessions inside it and throwing that away later. This is also the
-first item on the list that genuinely changes the storage SHAPE. ⚠ V6 MOVED
-`backupVersion` TO 2 for the class value change (`I`/`II` → `1`/`2`), so this
-group will be spending the move to 3 — the reasoning is unchanged, it just
-starts from a different number.
-
-- **Work saved as sessions**, as PATGo does it. One continuous log per phone is
-  what V1 chose and it has held, but everything below needs a boundary to point
-  at.
-- **A sessions screen.** List, switch, name, close.
-- **Combine sessions and files from other engineers, flagging duplicates for
-  review.** The merge helper, in its answered form. Needs CSV reading.
-- **Duplicate item warnings.** ⚠ SCOPED CAREFULLY: the within-phone case ALREADY
-  EXISTS and has since V1 — re-scan an asset already logged and the confirm
-  sheet offers Replace or Skip it, caught at scan time while the engineer is
-  still stood at the appliance. What is missing is the CROSS-SESSION and
-  CROSS-ENGINEER case, which is the merge problem wearing a different hat. Do
-  not rebuild the local warning.
+- **The last-item quick view is still on trial** and V7 did not touch it. It is
+  now session-scoped like everything else on the scan screen. Same three-edit
+  removal if it does not earn its place.
+- **Session housekeeping.** V7 deliberately has no way to delete a session that
+  holds records — the records would be orphaned and swept into a machine-named
+  session by the next load, which looks exactly like data loss. If closed
+  sessions pile up, the honest shape is "export it, then clear", not a delete
+  button. Watch first.
+- **Naming the session at the start of a job.** V7 names it after the day and
+  lets you rename. If engineers routinely do two sites in a day, prompting for a
+  name when a new session opens may pay for itself. Cheap to add, easy to
+  regret — a prompt on every fresh session would be nagging.
 
 ## Raised in V5 — small and independent — BOTH SHIPPED IN V6
 
@@ -99,18 +132,14 @@ starts from a different number.
 
 ## Worth building if the job grows
 
-- **Merge helper.** ⚠ ITS OPEN QUESTION IS ANSWERED — see "Sessions" below,
-  which supersedes it. V4 asked whether this belonged in this app or in a
-  separate one-page tool; V5's scoping settled it as a screen here, driven by
-  sessions. What has NOT changed is that it needs the app to READ a CSV, which
-  nothing here has ever done, and that remains the single largest new capability
-  on the list.
+- **~~Merge helper.~~** ✅ SHIPPED V7 as the sessions merge and the review
+  screen. ⚠ Its long-standing note that it "needs the app to READ a CSV" was
+  wrong, and the reason is written up under "Closed in V7" above — the exchange
+  is JSON because the CSV is lossy about our own records.
 - **Setup bundle export/import.** PATGo has `setup.js`: a shareable config file
   covering lists and preferences. Worth porting when there are enough phones
   that setting each one by hand is a risk of inconsistency.
-- **Session/day boundaries.** V1 keeps one continuous log per phone, exported
-  daily. If engineers start covering several buildings in a day, named batches
-  would make the merge easier to reason about.
+- **~~Session/day boundaries.~~** ✅ SHIPPED V7.
 - **Photo evidence on a fail.** Deliberately left out of V1 — it is the single
   heaviest subsystem in PATGo and the client has not asked for it. Revisit only
   if a dispute over a failed item actually happens.

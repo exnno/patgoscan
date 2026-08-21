@@ -30,6 +30,13 @@ const app = document.getElementById('app');
 // transient to state.js, add it here too.
 // ---------------------------------------------------------------------------
 function setView(v) {
+  // V7. ⚠ NAVIGATING AWAY FROM THE REVIEW ABANDONS IT, and that is the safe
+  // direction. Nothing in `state.review` has been written anywhere yet — the
+  // incoming records are still only in memory — so dropping it loses no data,
+  // whereas carrying a half-answered set of choices onto another screen and
+  // committing it later would apply decisions the engineer had walked away
+  // from. They still have the file; they can import it again.
+  if (v !== 'review') state.review = null;
   state.view = v;
   state.locationArmed = false;
   closeSheet();
@@ -63,6 +70,8 @@ function render() {
     case 'settingsScanner': html = renderSettingsScanner(); break;
     case 'settingsLists':   html = renderSettingsLists(); break;
     case 'settingsBackup':  html = renderSettingsBackup(); break;
+    case 'sessions':        html = renderSessions(); break;
+    case 'review':          html = renderReview(); break;
     case 'about':           html = renderAbout(); break;
     default:                html = renderScan(); break;
   }
@@ -133,7 +142,17 @@ function renderScanToggles() {
              data-action="${action}" data-arg="${arg}"
              aria-pressed="${on ? 'true' : 'false'}">${escapeHTML(label)}</button>`;
 
+  // ⚠ V7 — THE TWO ROWS SHARE ONE GRID. They used to be independent flex rows
+  // with a fixed 74px label column, and "INSPECTION" is wider than 74px at this
+  // size — a flex item will not shrink below its own unbroken word, so that row
+  // quietly stole about twelve pixels and its switch came out narrower than the
+  // one above it. Sharing a grid makes the label column exactly as wide as the
+  // longest label and both switches identical BY CONSTRUCTION, which is the
+  // reason to do it this way rather than by widening the fixed value: it stays
+  // true if a label is ever reworded. Do not put these rows back in their own
+  // containers. Test 14n, mutation M148.
   return `
+  <div class="toggrid">
   <div class="togrow">
     <span class="tog-label">Class</span>
     <div class="togswitch" role="group" aria-label="Item class">
@@ -146,6 +165,7 @@ function renderScanToggles() {
       ${opt('setVisual', 'test', !vis, 'Test', '')}
       ${opt('setVisual', 'visual', vis, 'Visual', ' is-warn')}
     </div>
+  </div>
   </div>`;
 }
 
@@ -247,6 +267,16 @@ function renderScan() {
         <span><b>${counts.locations}</b> locations</span>
         <span class="counts-note">today</span>
       </div>
+
+      <!-- V7. ⚠ QUIET, BUT IT HAS TO BE HERE. Export is scoped to the session
+           (3B) and the counts above are too, so a phone left in yesterday's
+           batch reports plausible-looking numbers for the wrong work and writes
+           a file to match. One line naming the session is the cheapest thing
+           that makes that visible before it costs anything. -->
+      <button type="button" class="sessionstrip" data-action="goSessions">
+        <span class="sessionstrip-label">Session</span>
+        <span class="sessionstrip-name">${escapeHTML(currentSessionName())}</span>
+      </button>
 
       ${exportNudgeDue() ? `
       <div class="nudge" data-action="go" data-arg="settingsBackup">
@@ -404,6 +434,7 @@ function renderSettings() {
       </button>
       ${link('Barcode scanner', 'settingsScanner', state.scannerEnabled ? 'On' : 'Off')}
       ${link('Fail reasons and descriptions', 'settingsLists', state.failReasons.length + ' fail reasons')}
+      ${link('Sessions', 'sessions', currentSessionName())}
       ${link('Export and backup', 'settingsBackup', unexportedCount() + ' not exported')}
 
       <h2 class="sec">Readings</h2>
@@ -535,19 +566,25 @@ function renderSettingsLists() {
   </div>`;
 }
 
+// ⚠ V7 — ONE EXPORT BUTTON, NOT TWO (decision 3B). "Export new" and "export
+// everything" were the same question asked twice and they no longer have
+// different answers: a file is the whole of the current session. Leaving a
+// second button that produced the same file would teach the engineer that one
+// of them does something else.
 function renderSettingsBackup() {
-  const pending = unexportedCount();
+  const counts = sessionCounts(state.currentSessionId);
+  const inSession = counts.items + counts.locations;
   return `
   <div class="screen">
     ${renderHeader('Export and backup', 'goSettings')}
     <main class="main main--nonav">
       <h2 class="sec">Send to the client</h2>
-      <p class="muted small">One CSV, every record in scan order. Exporting marks records as sent but does not delete anything.</p>
+      <p class="muted small">One CSV holding the whole of <b>${escapeHTML(currentSessionName())}</b>, in scan order — everything in it, whether it has been sent before or not. Exporting marks it as sent but deletes nothing.</p>
       <button type="button" class="btn btn-primary btn-wide" data-action="exportNew">
-        Export ${pending} new record${pending === 1 ? '' : 's'}</button>
-      <button type="button" class="btn btn-ghost btn-wide" data-action="exportAll">
-        Export everything (${state.records.length})</button>
+        Export ${counts.items} item${counts.items === 1 ? '' : 's'}</button>
       <button type="button" class="btn btn-ghost btn-wide" data-action="copyCsv">Copy the CSV to the clipboard</button>
+      <p class="muted small">${inSession ? '' : 'Nothing in this session yet. '}Working in a different batch? Switch session first.</p>
+      <button type="button" class="btn btn-ghost btn-wide" data-action="goSessions">Sessions</button>
 
       <h2 class="sec">Backup</h2>
       <p class="muted small">A full copy of everything on this phone, including your settings. This is what saves you if the phone is lost — do it at the end of every day.</p>
@@ -565,6 +602,212 @@ function renderSettingsBackup() {
   </div>`;
 }
 
+
+// ---------------------------------------------------------------------------
+// V7 — THE SESSIONS SCREEN
+//
+// ⚠ THE CURRENT SESSION IS SHOWN SEPARATELY AND FIRST, not as a highlighted row
+// in the list. Every action on this screen is relative to "which one am I in",
+// and a list where the answer is a shade of background is a list where the
+// answer gets missed. The same reasoning as the mode switch on the scan screen.
+//
+// ⚠ NO ACTION HERE DELETES A RECORD. Closing keeps everything, merging moves
+// everything, and delete is offered only for a session holding nothing at all.
+// The one path that destroys records is still the Clear button on the backup
+// page, behind its own two guards.
+// ---------------------------------------------------------------------------
+function renderSessions() {
+  const cur = currentSession();
+  const rows = sessionList();
+
+  const row = (ses) => {
+    const c = sessionCounts(ses.id);
+    const isCur = cur && ses.id === cur.id;
+    const bits = [
+      c.items + ' item' + (c.items === 1 ? '' : 's'),
+      c.locations + ' location' + (c.locations === 1 ? '' : 's'),
+      c.unexported ? c.unexported + ' not sent' : '',
+      ses.engineer ? escapeHTML(ses.engineer) : '',
+    ].filter(isNonEmptyString).join(' · ');
+
+    // ⚠ THE ACTIONS DIFFER BY STATE AND THAT IS DELIBERATE. Offering "close" on
+    // a closed session, or "switch to" on the one you are already in, is how a
+    // row stops being readable at a glance.
+    const acts = [];
+    if (!isCur && !ses.closedAt) acts.push(`<button type="button" class="linkbtn" data-action="switchSession" data-arg="${escapeHTML(ses.id)}">Work in this</button>`);
+    if (ses.closedAt) acts.push(`<button type="button" class="linkbtn" data-action="reopenSession" data-arg="${escapeHTML(ses.id)}">Reopen</button>`);
+    if (!ses.closedAt) acts.push(`<button type="button" class="linkbtn" data-action="closeSession" data-arg="${escapeHTML(ses.id)}">Close</button>`);
+    acts.push(`<button type="button" class="linkbtn" data-action="renameSession" data-arg="${escapeHTML(ses.id)}">Rename</button>`);
+    if (c.items + c.locations) {
+      acts.push(`<button type="button" class="linkbtn" data-action="shareSession" data-arg="${escapeHTML(ses.id)}">Share</button>`);
+      acts.push(`<button type="button" class="linkbtn" data-action="mergeSession" data-arg="${escapeHTML(ses.id)}">Merge into…</button>`);
+    } else {
+      acts.push(`<button type="button" class="linkbtn is-danger" data-action="deleteSession" data-arg="${escapeHTML(ses.id)}">Delete</button>`);
+    }
+
+    return `
+    <div class="seslist-row${isCur ? ' is-current' : ''}">
+      <div class="seslist-main">
+        <span class="seslist-name">${escapeHTML(ses.name)}</span>
+        ${isCur ? '<span class="seslist-tag">working in</span>'
+                : (ses.closedAt ? '<span class="seslist-tag is-closed">closed</span>' : '')}
+      </div>
+      <span class="seslist-sub">${bits}</span>
+      <div class="seslist-acts">${acts.join('')}</div>
+    </div>`;
+  };
+
+  return `
+  <div class="screen">
+    ${renderHeader('Sessions', 'goSettings')}
+    <main class="main main--nonav">
+      <p class="muted small">A session is a batch of work. Everything you scan goes into the one you are working in, and exporting sends the whole of that session — nothing else.</p>
+
+      <h2 class="sec">Working in</h2>
+      <div class="sescur">
+        <span class="sescur-name">${escapeHTML(cur ? cur.name : '')}</span>
+        <span class="sescur-sub">${(() => {
+          const c = sessionCounts(state.currentSessionId);
+          return c.items + ' item' + (c.items === 1 ? '' : 's') + ' · ' +
+                 c.locations + ' location' + (c.locations === 1 ? '' : 's');
+        })()}</span>
+      </div>
+      <button type="button" class="btn btn-primary btn-wide" data-action="newSession">Start a new session</button>
+
+      <h2 class="sec">All sessions</h2>
+      ${rows.length ? `<div class="seslist">${rows.map(row).join('')}</div>`
+                    : '<p class="muted small">Nothing here yet.</p>'}
+
+      <h2 class="sec">From another engineer</h2>
+      <p class="muted small">Import a session file another engineer shared from this app. Anything scanned twice is flagged for you to look at before it lands.</p>
+      <label class="btn btn-ghost btn-wide" for="session-file">Import a session file</label>
+      <input type="file" id="session-file" accept=".json,application/json" class="hidden-file"
+             data-change-action="importSession">
+      <p class="muted small">This is not the same as restoring a backup. A backup replaces everything on this phone; a session is added alongside what you already have.</p>
+    </main>
+  </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// V7 — THE DUPLICATE REVIEW (decisions 9A, 10A, 13A)
+//
+// ⚠ A SCREEN, NOT A SHEET, and the reason is length: a merge of two days can
+// collide on dozens of assets, and a sheet sized from the visual viewport would
+// put that list behind a scroll inside a scroll. No text inputs here, so rule 3
+// does not apply and a full render() per tap is safe.
+//
+// ⚠ IT COMMITS ALL AT ONCE OR NOT AT ALL. Applying each choice as it is tapped
+// would leave a half-merged pair of sessions behind if the engineer walked away
+// — and "walked away" on a phone means a phone call.
+//
+// ⚠ 13A — KEEPING THEIRS TAKES THEIR ENGINEER NAME WITH IT. Said plainly on
+// screen, because it is the one consequence that is invisible until six files
+// are in one spreadsheet and the ENGINEER column is answering the question
+// "who did this".
+// ---------------------------------------------------------------------------
+function renderReview() {
+  const rv = state.review;
+  if (!rv) return renderSessions();
+
+  const theirName = rv.mode === 'merge'
+    ? (sessionById(rv.fromId) ? sessionById(rv.fromId).name : 'the other session')
+    : (rv.sessionMeta ? rv.sessionMeta.name : 'the new session');
+  const mineName = rv.mode === 'merge'
+    ? (sessionById(rv.intoId) ? sessionById(rv.intoId).name : 'this session')
+    : 'what is already here';
+
+  const line = (rec) => {
+    const bits = [
+      (rec.result || '').toUpperCase(),
+      rec.description || '',
+      rec.failReason || '',
+      itemLocationShort(rec),
+      rec.engineer || '',
+      timeOfDay(rec.ts),
+    ].filter(isNonEmptyString).join(' · ');
+    return escapeHTML(bits);
+  };
+
+  const rows = rv.collisions.map((c) => {
+    const pick = rv.choices[c.key] === 'mine' ? 'mine' : 'theirs';
+    return `
+    <div class="revrow">
+      <span class="revrow-code">${escapeHTML(c.code)}</span>
+      <button type="button" class="revopt${pick === 'mine' ? ' is-on' : ''}"
+              data-action="reviewPick" data-arg="${escapeHTML(c.key)}|mine">
+        <span class="revopt-who">Keep ${escapeHTML(mineName)}</span>
+        <span class="revopt-detail">${line(c.mine)}</span>
+      </button>
+      <button type="button" class="revopt${pick === 'theirs' ? ' is-on' : ''}"
+              data-action="reviewPick" data-arg="${escapeHTML(c.key)}|theirs">
+        <span class="revopt-who">Keep ${escapeHTML(theirName)}</span>
+        <span class="revopt-detail">${line(c.theirs)}</span>
+      </button>
+    </div>`;
+  }).join('');
+
+  const n = rv.collisions.length;
+  return `
+  <div class="screen">
+    ${renderHeader('Scanned twice', 'cancelReview')}
+    <main class="main main--nonav">
+      <p class="muted small">${n} asset${n === 1 ? ' was' : 's were'} recorded in both <b>${escapeHTML(mineName)}</b> and <b>${escapeHTML(theirName)}</b>. Pick which result goes to the client. The one you keep replaces the other completely, including who is named as the engineer.</p>
+
+      <div class="revall">
+        <button type="button" class="linkbtn" data-action="reviewAll" data-arg="mine">Keep all mine</button>
+        <button type="button" class="linkbtn" data-action="reviewAll" data-arg="theirs">Keep all theirs</button>
+      </div>
+
+      ${rows}
+
+      <div class="revcommit">
+        <button type="button" class="btn btn-primary btn-wide" data-action="reviewCommit">
+          ${rv.mode === 'merge' ? 'Merge' : 'Import'} ${rv.incoming.length} record${rv.incoming.length === 1 ? '' : 's'}</button>
+        <button type="button" class="btn btn-ghost btn-wide" data-action="cancelReview">Cancel — change nothing</button>
+      </div>
+    </main>
+  </div>`;
+}
+
+// The merge target picker. Built the way the V4 location picker is, and with the
+// same rule: ⚠ THE LIST IS BUILT ONCE AND NEVER REBUILT while the sheet lives.
+function openMergePickerSheet(fromId) {
+  const from = sessionById(fromId);
+  if (!from) return;
+  const sheet = _openSheet('Merge into');
+  const others = sessionList().filter(s => s.id !== fromId);
+
+  const body = others.length
+    ? `<div class="reasonlist">
+        ${others.map(s => {
+          const c = sessionCounts(s.id);
+          return `<button type="button" class="reasonrow" data-merge-into="${escapeHTML(s.id)}">
+            <span class="reasonrow-main">${escapeHTML(s.name)}</span>
+            <span class="reasonrow-sub">${c.items} item${c.items === 1 ? '' : 's'}${s.closedAt ? ' · closed' : ''}</span>
+          </button>`;
+        }).join('')}
+      </div>`
+    : '<p class="sheet-body">There is nothing else to merge into yet.</p>';
+
+  sheet.innerHTML = `
+    <h3 class="sheet-title">Merge ${escapeHTML(from.name)} into…</h3>
+    <p class="sheet-body">Its records move across. ${escapeHTML(from.name)} stays on the list, closed and empty, so you can still see it was here.</p>
+    ${body}
+    <div class="sheet-actions">
+      <button type="button" class="btn btn-ghost" id="sheet-cancel">Cancel</button>
+    </div>`;
+
+  sheet.querySelector('#sheet-cancel').onclick = () => { _closeSheet(); render(); };
+  const btns = sheet.querySelectorAll('[data-merge-into]');
+  for (let i = 0; i < btns.length; i++) {
+    btns[i].onclick = (e) => {
+      const into = e.currentTarget.getAttribute('data-merge-into');
+      _closeSheet();
+      beginMerge(fromId, into);
+    };
+  }
+}
+
 function renderAbout() {
   return `
   <div class="screen">
@@ -574,6 +817,7 @@ function renderAbout() {
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V7</b> — work is now kept in <b>sessions</b>: a named batch you scan into, shown at the foot of the scan screen and managed from Settings → Sessions. Exporting sends the whole of the session you are in — everything in it, whether it has been sent before or not — so the client always receives a complete batch rather than loose corrections. You can share a session with another engineer and import theirs; anything scanned by both of you is listed side by side so you can pick which result goes to the client before it lands. Sessions can be merged. The Class and Inspection switches are now the same width.</p>
       <p class="muted small"><b>V6</b> — the export now matches the client's own layout: one row per asset, with separate columns for the visual, operational, earth bond and insulation results. Earth bond and insulation are filled in for you from figures you set in Settings, and you can correct either on any item from the log. Class is now written as 1 and 2. A Class 2 item never carries an earth bond reading. The scan screen shows the last thing you recorded at the bottom, so you can check it or undo it without opening the log, and the log now carries running totals.</p>
       <p class="muted small"><b>V5</b> — two switches now sit under the location bar and stay where you put them: <b>Class</b> (I or II) and <b>Test or Visual</b>. They apply to everything you scan in both modes, so a run of the same kind of appliance is set once rather than answered item by item. New items no longer ask for a class. An item recorded as Visual is called out on screen before you pass it and again in the log. The export gained separate columns for class and for visual inspections.</p>
       <p class="muted small"><b>V4</b> — an item logged in the wrong place can now be moved: tap it in the log and change its location. The picker shows each location's time, how many items you did there and what they were, so a bare barcode is still recognisable. Correcting an item also gets the Quick Pick buttons and the description suggestions the new item sheet has.</p>
@@ -589,14 +833,15 @@ function renderWelcome() {
     <main class="main welcome">
       <h1>PATGo Scan</h1>
 
-      <h2 class="sec">New in V5</h2>
+      <h2 class="sec">New in V7</h2>
       <ul>
-        <li><b>Two new switches, under the location bar.</b> <b>Class</b> — I or II. <b>Inspection</b> — Test or Visual. Set them once and everything you scan after that is recorded that way, in both Audit and Initial.</li>
-        <li><b>New items stop asking for a class.</b> The switch answers it, so a new item is now just a description and a result. The sheet tells you which class it is about to record.</li>
-        <li><b>Visual is meant to stand out.</b> The switch turns amber and the item waiting for a result says VISUAL INSPECTION ONLY before you press PASS. Visual items are marked in the log too, so a switch left on by mistake is something you can find and fix.</li>
-        <li><b>They stay put between uses.</b> Closing the app and coming back keeps them where you left them — like the Audit and Initial switch always has. <b>Worth a glance each morning.</b></li>
-        <li>Your records, lists and settings are exactly as you left them.</li>
+        <li><b>Your work is now kept in sessions.</b> A session is a named batch — a site, a day, a job. Everything you scan goes into the one you are working in, and its name is at the foot of the scan screen. <b>Worth a glance before you start.</b></li>
+        <li><b>Exporting sends the whole session.</b> Not just what is new — everything in it, every time. Correct something and re-export, and the client gets the complete batch back rather than a loose amendment.</li>
+        <li><b>You can share a session with another engineer.</b> Settings → Sessions → Share. They import it and it sits alongside their own work, not instead of it.</li>
+        <li><b>Anything scanned twice is put in front of you.</b> If you and they both tested the same asset, both results are shown side by side and you choose which one goes to the client. The one you keep replaces the other completely, including who is named as the engineer.</li>
+        <li><b>Everything already on your phone became your first session.</b> Nothing was lost or moved — it is all there, named after the days it covers.</li>
       </ul>
+      <p class="muted small"><b>A session file is not a backup.</b> A backup replaces everything on the phone; a session is added alongside what you already have. The app will stop you if you pick the wrong one.</p>
 
       <h2 class="sec">The whole app in four lines</h2>
       <ul>
