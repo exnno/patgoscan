@@ -10,6 +10,40 @@ things worth considering when the client's actual working day suggests them.
 
 *(Nothing outstanding. Both long-running questions closed in V6.)*
 
+## Closed in V9
+
+- **~~Scan a location barcode to move an item there.~~** ✅ SHIPPED V9. Raised in
+  V4 and held out of V5, V6, V7 and V8 — four releases, each time for a reason
+  that was true at the time. Tap the item in the log, tap **Save & scan** on the
+  Location row, stand in the right room and scan its label. ⚠ THE V4 NOTE WAS
+  RIGHT ABOUT THE HARD PART: the scanner refuses to collect while a sheet is
+  open, so this needed a new armed mode in the grammar rather than a button on
+  the picker. What the note did not know is that **the log screen already
+  consumed barcodes** — they went into the search box — so the arm does not add
+  a meaning, it takes one over. That is why every path out of the move disarms,
+  including the ones that refuse.
+
+## Raised in V9
+
+- **⚠ The picker can point an item at a location in another session.** V9's scan
+  path refuses this outright, because the log lists every session and the edit
+  sheet opens on any of them — an item pointed at a location outside its own
+  batch exports under a location its file does not contain. **The V4 picker has
+  the same hole from the other side**: `locationChoices()` only offers
+  current-session locations, but it will offer them for an item that is not in
+  the current session. Nobody has hit it, it predates V9, and it is one
+  condition to close. Worth doing in V10 while the reasoning is fresh.
+- **A mutation that adds dead code proves nothing.** M161 survived its first run
+  and the mutation was at fault, not the test: it inserted an `if (false)` line
+  above the comment block and left the real assignment below it. A mutation must
+  REMOVE or CHANGE the line carrying the invariant, and where the same statement
+  appears twice in a file it has to be anchored on its neighbour. Written up in
+  the V9 handoff.
+- **The welcome modal lost V7's "a session file is not a backup" note** when the
+  copy was rewritten for V9. The app still enforces the rule and stops you
+  picking the wrong one, so nothing is unsafe — but it is the only place that
+  warning was ever made in words. Say if it should be carried forward.
+
 ## Closed in V8
 
 - **~~The last-item quick view sits below the fold.~~** ✅ ANSWERED AND FIXED.
@@ -110,7 +144,11 @@ system.
 
 ## Raised in V4
 
-- **Scan a location barcode to move an item there.** The obvious gesture: stand
+- **~~Scan a location barcode to move an item there.~~** ✅ SHIPPED V9 — see
+  "Closed in V9" above. The history is kept because it is the clearest example
+  in this project of scope discipline actually working: five releases, four
+  deferrals, each with a stated reason, and it shipped alone in the end.
+  The obvious gesture: stand
   in the room, scan its label, item moves. Ruled out of V4 rather than bodged —
   the scanner refuses to collect while a sheet is open, by construction since V1
   (mutations M24, M78), so this needs a new armed mode in the dispatch grammar
@@ -123,7 +161,9 @@ system.
   ahead of it in the queue. ⚠ HELD OUT OF V7 TOO — V7 took the sessions group,
   which changed the storage shape. Same argument, third time: it is still
   self-contained, still has no open questions, and is now the strongest
-  candidate for V8.
+  candidate for V8. ⚠ HELD OUT OF V8 as well, for a new reason — V8 was already
+  carrying the restored harness and a broad sweep across `render.js` and
+  `styles.css`. **V9 took it, alone, exactly as the V8 handoff said it should.**
 - **Naming an audit location retrospectively.** Already possible — tap it in the
   log and fill in Client / Floor / Room — but nothing prompts for it, and the V4
   picker is the first place where an unnamed location visibly costs something.

@@ -1,4 +1,4 @@
-# PATGo Scan — Code Map (V8)
+# PATGo Scan — Code Map (V9)
 
 Routing only: which concern lives in which file, and the cross-file couplings
 you cannot discover by reading one file. Read this to decide *what to open*.
@@ -167,7 +167,7 @@ The live values are in `state` and editable in Settings; the figure is COPIED
 onto each record as it is logged, so changing the setting never rewrites past
 work (decision 4B).
 
-### state.js (~80 ln) — the global `state` object
+### state.js (~130 ln) — the global `state` object
 The single `let state = {…}`. Persisted fields, transients, derived.
 **Touch to:** add a runtime field.
 **⚠ V5/V6: `visualMode`, `itemClass`, `earthBondValue` and `insulationValue` sit
@@ -177,7 +177,10 @@ they are sticky across restarts (decision 7A). ⚠ Anything the app persists
 deliberately must also be reset in `harness/fixture.js resetApp()` or the first
 test to flip it sets it for every test after it.
 **Coupling:** a new transient must also be cleared in `setView()` (render.js) —
-rule 4.
+rule 4. ⚠ **V9 — `moveArmed` holds an ITEM ID, not a flag.** A boolean would need
+a second field naming the item, and two fields that must agree can be half-set.
+It is cleared by `setView()` like every other transient, which is why
+`armMove()` navigates *before* it arms — see dispatch.js.
 
 ### utils.js (~110 ln) — pure helpers, no state access
 Escaping, ids, local timestamps, title-casing, CSV cell quoting, sorting.
@@ -230,7 +233,7 @@ sheets. No state, no re-render, which is what makes these safe to call from an
 error handler. ⚠ iOS gives a PWA no programmatic haptics; that is permanent and
 not a bug to fix.
 
-### scanner.js (~430 ln) — HID barcode scanner
+### scanner.js (~490 ln) — HID barcode scanner
 Carried across from PATGo v67. Burst detection, the diagnostic log, paired-mode
 focus. Burst state is module-level `let`, never `state` — it is the last ~100ms
 of keyboard.
@@ -255,6 +258,11 @@ hole is open in PATGo v70.**
 **Coupling:** accepts scans in three targets only (`#scan-input`, `#log-search`,
 `#scanner-test`) and bails everywhere else, including with any sheet open. Hands
 the text to `routeScan()` (dispatch.js) — the GRAMMAR is not this file's job.
+⚠ **V9 — THE LOG TARGET HAS TWO KINDS.** `#log-search` delivers as `search`
+normally and as `move` while `state.moveArmed` is set; the element is the same
+either way so the focus rule cannot behave differently between them. Which one
+applies is a routing question and lives here; what a destination barcode MEANS
+is still `routeScan()`'s. Harness 11r–11aa, mutations M160–M167.
 Bound once from boot.js (rule 6). `focusScanInput()` is called from `render()`.
 
 ### csv.js (~150 ln) — THE CLIENT DELIVERABLE
@@ -326,7 +334,16 @@ message rather than passing it through. Do not add a raw-text fallback.
 limit: boot.js loads last, so a parse-time failure earlier predates these
 handlers — the integrity guard covers that case instead.
 
-### render.js (~1490 ln) — every screen, every sheet
+### render.js (~1550 ln) — every screen, every sheet
+
+⚠ **V9 — THE EDIT SHEET SAVES BEFORE IT ARMS A MOVE (3A), and that is not
+optional politeness.** Arming closes the sheet and closing the sheet destroys
+the draft — the exact loss V4 and V5 kept extending `snapshot()` to prevent.
+There is no coming home from a move, because the engineer walks to another room,
+so `saveAll()` is extracted and both `#ed-ok` and `#ed-locscan` go through it.
+The button says "Save & scan" so the save is stated rather than hidden.
+⚠ `renderMoveBar()` clears the arm if the record it names has gone; a banner
+naming a deleted item invites a walk to a room to scan a label for nothing.
 
 ⚠ **V8 — THREE SCAN-SCREEN BLOCKS ARE COUPLED TO `styles.css` AND USELESS ALONE.**
 `renderLastItem()` puts `.lastitem-acts` INSIDE `.lastitem-main` because the rule
@@ -372,7 +389,13 @@ directly — `focusSheetField()` (feedback.js) is the only path, rule 13. Harnes
 `INPUT_ACTIONS`, `CHANGE_ACTIONS`) attached once to `#app` at boot.
 **Touch to:** change the scan grammar or add a delegated handler.
 **Coupling:** ⚠ A location is REQUIRED before an asset scan — an item with no
-location is a row the client cannot place. ⚠ A throw inside any action is caught
+location is a row the client cannot place. ⚠ **V9 — THE GRAMMAR NOW HAS THREE
+MEANINGS, and the move branch is FIRST and ONE-SHOT.** The arm is cleared before
+anything can fail, so every path out — moved, refused, wrong session, unknown
+code — leaves the app disarmed; an arm that outlived its own error case would
+take the next barcode too. ⚠ `armMove()` calls `setView('log')` BEFORE setting
+`state.moveArmed`, because `setView()` clears every transient: the obvious order
+disarms silently and nothing on screen says why. ⚠ A throw inside any action is caught
 here and recovered to the scan screen; assert this through
 `handleDelegatedClick`, never through `render()`. ⚠ Text-input actions must not
 `render()` on a keystroke. ⚠ File inputs must clear `el.value` immediately.

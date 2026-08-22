@@ -28,6 +28,19 @@ function routeScan(text) {
   const code = cleanText(text, SCAN_MAX_LENGTH);
   if (!code) return;
 
+  // --- A destination for an item being moved (V9) --------------------------
+  //
+  // ⚠ FIRST, AND ONE-SHOT. The arm is cleared before anything can fail, so
+  // every path out of this branch leaves the app disarmed. An arm that survived
+  // its own error case would sit waiting on the log screen after telling the
+  // engineer it had not worked, and take the next barcode as well.
+  if (state.moveArmed) {
+    const id = state.moveArmed;
+    state.moveArmed = '';
+    _routeMoveScan(id, code);
+    return;
+  }
+
   // --- A location ---------------------------------------------------------
   if (state.locationArmed) {
     state.locationArmed = false;
@@ -71,6 +84,71 @@ function routeScan(text) {
   }
 
   _beginPending(code, null, null);
+}
+
+// V9 — the destination has been scanned. Everything that can go wrong here ends
+// the same way: say what happened, disarmed, with the record untouched.
+//
+// ⚠ THE ORDER OF THESE CHECKS IS THE MESSAGE THE ENGINEER GETS. Each one
+// explains a different situation, so the narrowest true reason must win — and
+// the session check has to come before the lookup, because for an item outside
+// the current session NO barcode could ever resolve and "that location isn't in
+// this session" would send them off to scan a label that would not help.
+function _routeMoveScan(id, code) {
+  const rec = recordById(id);
+  if (!rec || rec.type !== 'item') {
+    showToast('That record has gone');
+    render();
+    return;
+  }
+
+  // ⚠ V9 — SESSIONS DO NOT MIX, and this is the one rule here that protects the
+  // client's file rather than the engineer's patience. The log shows every
+  // session, so the edit sheet can be opened on an item belonging to a batch
+  // that is not the one being scanned into. Pointing it at a location from
+  // today's session would export an item under a location the file it lands in
+  // does not contain.
+  if (!inCurrentSession(rec)) {
+    showToast('That item is in another session');
+    render();
+    return;
+  }
+
+  // ⚠ 4A — A LOCATION THAT HAS NOT BEEN SCANNED IS REFUSED, NOT CREATED. Same
+  // rule the V4 picker has always followed: an item can only be moved somewhere
+  // that already exists, so the export can never carry an item row pointing at
+  // a location row that is not in the file. It also makes the accident safe —
+  // an ASSET barcode scanned here is simply not a location, and gets this
+  // message instead of quietly becoming a junk location record.
+  const loc = findLocationByCode(code);
+  if (!loc) {
+    showToast(code + ' is not a location in this session');
+    render();
+    return;
+  }
+
+  if (loc.id === rec.locationId) {
+    showToast(rec.code + ' is already at ' + locationLabel(loc));
+    render();
+    return;
+  }
+
+  // The model already does this correctly — both fields or neither (rule 12).
+  updateRecordFields(id, { locationId: loc.id });
+  showToast(rec.code + ' moved to ' + locationLabel(loc));
+  render();
+}
+
+// V9 — arm a move and put the engineer where the banner is.
+//
+// ⚠ THE ORDER HERE IS LOAD-BEARING AND LOOKS WRONG. setView() clears every
+// transient by design, moveArmed included, so arming first and navigating
+// second disarms silently: the banner never appears, the scan goes to the log
+// search, and nothing tells anybody why. Navigate, THEN arm.
+function armMove(id) {
+  setView('log');
+  state.moveArmed = id;
+  render();
 }
 
 // Start an item waiting for a result. Nothing is written to `records` yet — see
@@ -162,6 +240,9 @@ const ACTIONS = {
 
   armLocation: () => { state.locationArmed = true; render(); },
   cancelLocation: () => { state.locationArmed = false; render(); },
+  // V9. The whole banner is the cancel target, not a small × in the corner —
+  // this is a state the engineer wants OUT of, one-handed, holding a scanner.
+  cancelMove: () => { state.moveArmed = ''; render(); },
 
   manualEntry: () => {
     openNameSheet({

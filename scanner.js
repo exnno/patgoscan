@@ -173,8 +173,16 @@ function _scanTarget() {
     el = document.getElementById('scan-input');
     kind = 'scan';
   } else if (state.view === 'log') {
+    // V9. ⚠ THE LOG IS THE ONE SCREEN WHERE A SCAN ALREADY MEANT SOMETHING, and
+    // a move arm takes that meaning over — the barcode is a destination, not a
+    // search term. The target ELEMENT stays the search box on purpose: it is
+    // the only field on this screen, so the focus rule below behaves exactly as
+    // it does unarmed and there is no second way for a burst to be refused.
+    //
+    // This file still only answers "which surface receives this". What a
+    // destination barcode MEANS is routeScan()'s, in dispatch.js.
     el = document.getElementById('log-search');
-    kind = 'search';
+    kind = state.moveArmed ? 'move' : 'search';
   } else if (state.view === 'settingsScanner') {
     el = document.getElementById('scanner-test');
     kind = 'test';
@@ -349,6 +357,7 @@ function applyScan(ctx, raw) {
   if (!text || !ctx || !ctx.el) return;
   try {
     if (ctx.kind === 'scan') _scanIntoScanScreen(ctx.el, text);
+    else if (ctx.kind === 'move') _scanIntoMove(text);
     else if (ctx.kind === 'search') _scanIntoSearch(ctx.el, text);
     else if (ctx.kind === 'test') _scanIntoTest(ctx.el, text);
   } catch (err) {
@@ -364,6 +373,19 @@ function applyScan(ctx, raw) {
 function _scanIntoScanScreen(el, text) {
   el.value = text;
   _scanFlash(el);
+  if (typeof routeScan === 'function') routeScan(text);
+}
+
+// V9 — the destination for an item being moved.
+//
+// ⚠ NOTHING IS WRITTEN TO THE SEARCH BOX AND NOTHING IS FLASHED, unlike every
+// other delivery here. The other three show the engineer what arrived because
+// the text LANDS somewhere they can correct it; this one does not land anywhere
+// — it is consumed immediately and answered by a toast naming the item and the
+// room, which is a better confirmation than the barcode echoed back. Putting it
+// in the box would also silently filter the log behind the toast, hiding the
+// row that just moved.
+function _scanIntoMove(text) {
   if (typeof routeScan === 'function') routeScan(text);
 }
 

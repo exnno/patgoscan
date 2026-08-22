@@ -81,6 +81,18 @@ let state = {
   // is a location, not an asset. It disarms itself once used or on cancel.
   locationArmed: false,
 
+  // V9 — moveArmed: the id of an ITEM waiting to be moved. While it is set, the
+  // next scan on the log screen is that item's destination.
+  //
+  // ⚠ IT HOLDS AN ID, NOT A FLAG, and that is not just convenience. A boolean
+  // would need a second field to say WHICH item, and two fields that must agree
+  // is a state that can be half-set — armed with nothing to move, or a target
+  // left behind after a cancel. One field cannot disagree with itself.
+  //
+  // ⚠ IT IS CLEARED BY setView(), like every other transient. See the ordering
+  // trap in armMove() (dispatch.js): arming BEFORE navigating silently disarms.
+  moveArmed: '',
+
   // pending: an asset has been scanned but no result recorded yet. This is the
   // half-finished record sitting on the screen with PASS/FAIL waiting. It is
   // deliberately NOT in `records` — an item with no result is not data, and

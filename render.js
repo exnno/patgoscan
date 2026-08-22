@@ -39,6 +39,12 @@ function setView(v) {
   if (v !== 'review') state.review = null;
   state.view = v;
   state.locationArmed = false;
+  // V9. ⚠ A MOVE ARM MUST NOT SURVIVE NAVIGATION. It only has a meaning on the
+  // log screen, where the banner says what it is waiting for; carried anywhere
+  // else it is an invisible arm that changes what the NEXT barcode does. That
+  // is the worst shape a bug can take in this app — a scan that goes somewhere
+  // the engineer did not ask for, with nothing on screen to have warned them.
+  state.moveArmed = '';
   closeSheet();
   render();
 }
@@ -359,6 +365,7 @@ function renderLog() {
   <div class="screen">
     ${renderHeader('Log')}
     <main class="main">
+      ${renderMoveBar()}
       <input type="text" id="log-search" class="field" placeholder="Search asset or location"
              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
              data-input-action="logSearch" value="${escapeHTML(state.logSearch)}">
@@ -366,6 +373,27 @@ function renderLog() {
       <div id="log-list">${renderLogListHTML()}</div>
     </main>
     ${renderNav('log')}
+  </div>`;
+}
+
+// V9 — the move arm, shown only on the log and only while armed.
+//
+// ⚠ IT SITS ABOVE THE SEARCH BOX FOR A REASON. While it is up, a scan is a
+// destination rather than a search, and the control whose behaviour has changed
+// is the one directly beneath the notice saying so.
+//
+// ⚠ IF THE RECORD HAS GONE, SO HAS THE ARM. A banner naming an item that is no
+// longer there would leave the engineer scanning a room for something deleted
+// in another tab or by a restore, and _routeMoveScan() would then refuse a scan
+// the screen had invited.
+function renderMoveBar() {
+  if (!state.moveArmed) return '';
+  const rec = recordById(state.moveArmed);
+  if (!rec || rec.type !== 'item') { state.moveArmed = ''; return ''; }
+  return `
+  <div class="movebar" data-action="cancelMove">
+    <span class="movebar-label">Scan where <b>${escapeHTML(rec.code)}</b> belongs</span>
+    <span class="movebar-hint">Stand in the room and scan its location barcode · Tap to cancel</span>
   </div>`;
 }
 
@@ -838,11 +866,11 @@ function renderAbout() {
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V9</b> — an item filed in the wrong room can now be moved by scanning. Tap it in the log, tap <b>Save &amp; scan</b> on the Location row, then stand in the right room and scan its location barcode. Anything else you had corrected on that item is saved first. Picking from the list still works exactly as before, and is still the way to do it when you are not stood in the room.</p>
       <p class="muted small"><b>V8</b> — the scan screen has been tightened up so it fits on the phone without scrolling. The session you are working in, and the last thing you recorded, are both visible at the bottom of the screen while you are between scans rather than just off the end of it. The last item is now a single line with Edit and Undo beside it. Once a location is set it takes one line instead of two, and the "Scan an asset" prompt only explains itself in Initial mode, where there is something to explain.</p>
       <p class="muted small"><b>V7</b> — work is now kept in <b>sessions</b>: a named batch you scan into, shown at the foot of the scan screen and managed from Settings → Sessions. Exporting sends the whole of the session you are in — everything in it, whether it has been sent before or not — so the client always receives a complete batch rather than loose corrections. You can share a session with another engineer and import theirs; anything scanned by both of you is listed side by side so you can pick which result goes to the client before it lands. Sessions can be merged. The Class and Inspection switches are now the same width.</p>
       <p class="muted small"><b>V6</b> — the export now matches the client's own layout: one row per asset, with separate columns for the visual, operational, earth bond and insulation results. Earth bond and insulation are filled in for you from figures you set in Settings, and you can correct either on any item from the log. Class is now written as 1 and 2. A Class 2 item never carries an earth bond reading. The scan screen shows the last thing you recorded at the bottom, so you can check it or undo it without opening the log, and the log now carries running totals.</p>
-      <p class="muted small"><b>V5</b> — two switches now sit under the location bar and stay where you put them: <b>Class</b> (I or II) and <b>Test or Visual</b>. They apply to everything you scan in both modes, so a run of the same kind of appliance is set once rather than answered item by item. New items no longer ask for a class. An item recorded as Visual is called out on screen before you pass it and again in the log. The export gained separate columns for class and for visual inspections.</p>
-
+      
       <p class="muted small">© 2026 Peter Birchley. All rights reserved.</p>
     </main>
   </div>`;
@@ -854,15 +882,14 @@ function renderWelcome() {
     <main class="main welcome">
       <h1>PATGo Scan</h1>
 
-      <h2 class="sec">New in V7</h2>
+      <h2 class="sec">New in V9</h2>
       <ul>
-        <li><b>Your work is now kept in sessions.</b> A session is a named batch — a site, a day, a job. Everything you scan goes into the one you are working in, and its name is at the foot of the scan screen. <b>Worth a glance before you start.</b></li>
-        <li><b>Exporting sends the whole session.</b> Not just what is new — everything in it, every time. Correct something and re-export, and the client gets the complete batch back rather than a loose amendment.</li>
-        <li><b>You can share a session with another engineer.</b> Settings → Sessions → Share. They import it and it sits alongside their own work, not instead of it.</li>
-        <li><b>Anything scanned twice is put in front of you.</b> If you and they both tested the same asset, both results are shown side by side and you choose which one goes to the client. The one you keep replaces the other completely, including who is named as the engineer.</li>
-        <li><b>Everything already on your phone became your first session.</b> Nothing was lost or moved — it is all there, named after the days it covers.</li>
+        <li><b>An item in the wrong room can be moved by scanning.</b> Tap it in the log, then tap <b>Save &amp; scan</b> on the Location row. The app comes back to the log and waits.</li>
+        <li><b>Then stand in the right room and scan its location barcode.</b> The item moves there. Nothing else about it changes.</li>
+        <li><b>It has to be a room you have already scanned today.</b> If it is somewhere new, set it as your location on the scan screen first — then come back and move the item.</li>
+        <li><b>Anything else you corrected on that item is saved first</b>, so a description you had just fixed is not lost when the screen changes.</li>
+        <li><b>Picking from the list has not gone anywhere.</b> Change is still there and still the quicker way when you are not stood in the room.</li>
       </ul>
-      <p class="muted small"><b>A session file is not a backup.</b> A backup replaces everything on the phone; a session is added alongside what you already have. The app will stop you if you pick the wrong one.</p>
 
       <h2 class="sec">The whole app in four lines</h2>
       <ul>
@@ -1243,6 +1270,7 @@ function openEditSheet(id, draft) {
           ? escapeHTML(locLine)
           : 'Not recorded'}</span>
         <button type="button" class="linkbtn" id="ed-locchange">Change</button>
+        <button type="button" class="linkbtn" id="ed-locscan">Save &amp; scan</button>
       </div>
       <label class="lbl" for="ed-desc">Description</label>
       ${picks.length ? `<div class="quick-grid" id="ed-quick">
@@ -1470,11 +1498,19 @@ function openEditSheet(id, draft) {
 
     sheet.querySelector('#ed-reasonchange').onclick = askReason;
 
-    sheet.querySelector('#ed-ok').onclick = () => {
+    // V9. ⚠ EXTRACTED SO THE MOVE CAN COMMIT IT FIRST (decision 3A). Arming a
+    // move closes this sheet, and closing this sheet destroys the draft — the
+    // exact loss V4 and V5 kept adding fields to snapshot() to prevent. There
+    // is no snapshot to come home to here, because the whole point is that the
+    // engineer walks away from the phone and scans a room, so the draft is
+    // SAVED rather than carried. The button says so: "Save & scan".
+    //
+    // Returns false if it refused, so the caller knows not to carry on.
+    const saveAll = () => {
       if (res === 'fail' && !cleanText(reason, 120)) {
         showToast('Pick a fail reason');
         askReason();
-        return;
+        return false;
       }
       updateRecordFields(id, {
         description: titleCaseWords(sheet.querySelector('#ed-desc').value),
@@ -1486,7 +1522,18 @@ function openEditSheet(id, draft) {
         earthBond: sheet.querySelector('#ed-earth').value,
         insulation: sheet.querySelector('#ed-ins').value,
       });
+      return true;
+    };
+
+    sheet.querySelector('#ed-ok').onclick = () => {
+      if (!saveAll()) return;
       closeSheet(); showToast('Saved'); render();
+    };
+
+    // V9 — scan-to-move. Save, close, land on the log armed and waiting.
+    sheet.querySelector('#ed-locscan').onclick = () => {
+      if (!saveAll()) return;
+      armMove(id);
     };
   }
 

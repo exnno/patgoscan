@@ -237,6 +237,30 @@ li { margin-bottom: 8px; }
 .locbar.is-armed .locbar-hint { color: rgba(255,255,255,.85); }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .78; } }
 
+/* @@ the move arm (V9) ---------------------------------------------------- */
+/* Shown on the LOG screen only, and only while an item is waiting to be moved.
+
+   ⚠ IT SHARES .locbar.is-armed's LOOK ON PURPOSE, and shares none of its rules.
+   Accent fill and the same pulse, because it is the same kind of state — the
+   app is holding its breath waiting for one barcode — and an engineer who has
+   learnt "blue and breathing means scan something now" on the scan screen
+   should not have to learn it twice. It is a separate block rather than a
+   .locbar modifier because it is not that bar: it lives on another screen,
+   carries an id in state rather than a boolean, and none of the V8 one-line
+   collapse applies to it.
+
+   The hint wraps rather than truncating. It is instructional, it is read once
+   per move, and this screen has no height budget to defend. */
+.movebar {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: 12px 14px; border-radius: var(--radius); margin-bottom: 10px;
+  border: 1px solid var(--accent); background: var(--accent);
+  color: #fff; cursor: pointer;
+  animation: pulse 1.4s ease-in-out infinite;
+}
+.movebar-label { font-weight: 650; }
+.movebar-hint { font-size: 13px; color: rgba(255,255,255,.85); }
+
 /* @@ toggles (V5) -------------------------------------------------------- */
 /* The two persistent switches, on their own rows beneath the location bar.
    They apply in BOTH modes, which is why they are not part of the mode switch.
