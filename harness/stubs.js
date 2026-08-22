@@ -69,7 +69,25 @@ function makeEl(tag, id) {
     // assertion that mattered never runs. The stub is cached per selector so
     // that two lookups of the same id are the same node, which is what lets a
     // test click a sheet button it looked up earlier.
+    //
+    // ⚠ V10 — WITH ONE EXCEPTION, AND IT IS THERE BECAUSE THE BLANKET RULE HID
+    // A REAL CRASH. Mutation M174 removed the `if (locScan)` guard around a
+    // button that V10 makes conditional; in a browser that is an immediate
+    // TypeError inside the sheet builder, leaving a half-wired edit sheet with
+    // no Save and no Cancel. The suite stayed green, because this stub
+    // manufactured the button that was not there. A stub that cannot fail the
+    // way the browser fails is a stub that certifies broken code.
+    //
+    // So: an `#id` selector looked up on a node whose innerHTML HAS been set
+    // and does NOT contain that id returns null, exactly as the browser would.
+    // Everything else keeps the permissive behaviour above — the exception is
+    // narrow on purpose, because the permissiveness is load-bearing for every
+    // builder that queries before the test has set any HTML at all.
     querySelector(sel) {
+      if (sel.charAt(0) === '#' && sel.indexOf(' ') === -1 &&
+          this._html && this._html.indexOf('id="' + sel.slice(1) + '"') === -1) {
+        return null;
+      }
       this._q = this._q || {};
       if (!this._q[sel]) {
         const child = makeEl(sel.indexOf('input') !== -1 ? 'input' : 'button');

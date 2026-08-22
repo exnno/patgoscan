@@ -39,7 +39,7 @@ const MUTATIONS = [
   // the version bump breaks the find string and the mutation reports SKIPPED.
   // Update it as part of the bump; a skip here means the cache-key invariant
   // is unguarded for that release, which is how a build ships without one.
-  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v9'", "const CACHE_VERSION = 'pat-v71'",
+  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v10'", "const CACHE_VERSION = 'pat-v71'",
     'cache key using the parent app prefix'],
   ['M04', 'utils.js', '(c) 2026 Peter Birchley. All rights reserved.', '(c) 2026',
     'copyright header stripped'],
@@ -327,8 +327,8 @@ const MUTATIONS = [
   ['M85', 'log.js', '    row.count++;', '',
     'picker rows that cannot say how much was done in a room'],
   ['M86', 'log.js',
-    "  const items = state.records.filter(r => r.type === 'item' && inCurrentSession(r)).sort(byNewest);",
-    "  const items = state.records.filter(r => r.type === 'item' && inCurrentSession(r));",
+    "  const items = state.records.filter(r => r.type === 'item' && r.sessionId === want).sort(byNewest);",
+    "  const items = state.records.filter(r => r.type === 'item' && r.sessionId === want);",
     'samples in storage order rather than what was tested there last'],
   ['M87', 'render.js', '          const named = label !== loc.code;', '          const named = true;',
     'an unnamed location printing its barcode twice in one row'],
@@ -657,8 +657,8 @@ const MUTATIONS = [
     "    kind = 'search';",
     'the log screen never routing to the move grammar — the scan becomes a search'],
   ['M163', 'render.js',
-    "    sheet.querySelector('#ed-locscan').onclick = () => {\n      if (!saveAll()) return;\n      armMove(id);",
-    "    sheet.querySelector('#ed-locscan').onclick = () => {\n      armMove(id);",
+    "      locScan.onclick = () => {\n        if (!saveAll()) return;\n        armMove(id);",
+    "      locScan.onclick = () => {\n        armMove(id);",
     'arming without saving first (3A undone) — the draft lost silently'],
   ['M164', 'dispatch.js', '  const loc = findLocationByCode(code);',
     '  const loc = findLocationByCode(code) || addLocationRecord(code, MODE_AUDIT, null);',
@@ -673,8 +673,47 @@ const MUTATIONS = [
     "function armMove(id) {\n  setView('log');\n  state.moveArmed = id;",
     "function armMove(id) {\n  state.moveArmed = id;\n  setView('log');",
     'armMove ordering reversed — setView clears the arm it just set'],
-  ['M168', 'README.md', 'cache `scan-v9`', 'cache `scan-v8`',
+  ['M168', 'README.md', 'cache `scan-v10`', 'cache `scan-v9`',
     'the README front page left on the previous release'],
+
+  // --- V10: the picker's cross-session hole -------------------------------
+  //
+  // ⚠ EVERY ONE OF THESE REMOVES OR CHANGES THE LINE CARRYING THE INVARIANT,
+  // which is the lesson M161 taught in V9: a mutation that ADDS dead code to a
+  // working function breaks nothing and therefore proves nothing. Where a
+  // statement appears more than once it is anchored on a neighbour.
+  ['M169', 'log.js',
+    "const want = isNonEmptyString(sessionId) ? sessionId : state.currentSessionId;",
+    "const want = state.currentSessionId;",
+    'the picker back to the current session whatever item it was opened on'],
+  ['M170', 'render.js',
+    "  const rows = locationChoices(3, sessionId);",
+    "  const rows = locationChoices(3);",
+    'the session id accepted and then not used — the V9 bug exactly'],
+  ['M171', 'render.js',
+    "        () => openEditSheet(id, draftNow),\n        // V10 — THE RECORD'S session, read fresh rather than captured, because\n        // this closure outlives the sheet that made it.\n        rec.sessionId",
+    "        () => openEditSheet(id, draftNow)",
+    'the call site omitting the session, leaving the fix wired to nothing'],
+  ['M172', 'log.js',
+    "    if (r.type !== 'location' || r.sessionId !== want) continue;",
+    "    if (r.type !== 'location') continue;",
+    'every session\u2019s rooms offered at once, in one undivided list'],
+  ['M173', 'render.js',
+    "        ${inCurrentSession(rec)\n          ? '<button type=\"button\" class=\"linkbtn\" id=\"ed-locscan\">Save &amp; scan</button>'\n          : ''}",
+    "        <button type=\"button\" class=\"linkbtn\" id=\"ed-locscan\">Save &amp; scan</button>",
+    'Save & scan offered where it can only ever refuse (2A undone)'],
+  ['M174', 'render.js',
+    "    const locScan = sheet.querySelector('#ed-locscan');\n    if (locScan) {\n      locScan.onclick",
+    "    const locScan = sheet.querySelector('#ed-locscan');\n    {\n      locScan.onclick",
+    'the unguarded wiring — a half-built edit sheet with no Save and no Cancel'],
+  ['M175', 'render.js',
+    "    : otherSession\n      ? `<p class=\"muted\">That item belongs to another session, and nothing was scanned as a location in it. There is nowhere to move it to.</p>`\n      : `<p class=\"muted\">No locations scanned yet. Scan a location barcode first, then come back.</p>`;",
+    "    : `<p class=\"muted\">No locations scanned yet. Scan a location barcode first, then come back.</p>`;",
+    'an empty other-session list telling the engineer to go and scan a label that cannot help'],
+  ['M176', 'render.js',
+    "      <p class=\"muted small\">Share sends a copy of one session to another engineer. <b>It is not a backup</b>",
+    "      <p class=\"muted small\">Share sends a copy of one session to another engineer. <b>Handy</b>",
+    'the session-file-is-not-a-backup warning lost a second time (3A)'],
 ];
 
 function run(cmd) {
