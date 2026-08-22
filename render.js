@@ -209,7 +209,17 @@ function renderScan() {
   // The result panel. Either an asset waiting to be judged, or the prompt.
   let panel;
   if (pending) {
-    const desc = [pending.description, pending.cls ? 'Class ' + pending.cls : '']
+    // V11 — a run. ⚠ NO NEW LINE ON THIS PANEL, AND THAT IS DELIBERATE. The
+    // pending screen is the one V8 measured as still overflowing by ~163px
+    // (decision 2A, the held lever), so the run says itself in the three
+    // elements already here: the code line becomes the range, the description
+    // line gains the count, and the buttons say how many they are about to
+    // write. A fourth line would buy clarity on a screen that has none to spend.
+    const runCount = (pending.count > 1) ? pending.count : 0;
+    const runCodes = runCount ? runCodesFrom(pending.code, runCount) : [];
+    const headline = runCount ? runRangeLabel(runCodes) : pending.code;
+    const desc = [runCount ? runCount + ' items' : '',
+      pending.description, pending.cls ? 'Class ' + pending.cls : '']
       .filter(isNonEmptyString).join(' · ');
     // V5. ⚠ THE TOGGLE STATE IS REPEATED HERE ON PURPOSE. It is already at the
     // top of the screen, and that is not enough: the top of the screen is set
@@ -221,17 +231,17 @@ function renderScan() {
     panel = `
     <div class="pending">
       <span class="pending-label">Waiting for a result</span>
-      <span class="pending-code">${escapeHTML(pending.code)}</span>
+      <span class="pending-code">${escapeHTML(headline)}</span>
       ${desc ? `<span class="pending-desc">${escapeHTML(desc)}</span>` : ''}
       ${pending.visual
         ? '<span class="pending-flag">VISUAL INSPECTION ONLY</span>'
         : ''}
     </div>
     <div class="verdict">
-      <button type="button" class="btn-pass" data-action="pass">PASS</button>
-      <button type="button" class="btn-fail" data-action="fail">FAIL</button>
+      <button type="button" class="btn-pass" data-action="pass">${runCount ? 'PASS ALL ' + runCount : 'PASS'}</button>
+      <button type="button" class="btn-fail" data-action="fail">${runCount ? 'FAIL ALL ' + runCount : 'FAIL'}</button>
     </div>
-    <button type="button" class="btn btn-ghost btn-wide" data-action="cancelPending">Discard this scan</button>`;
+    <button type="button" class="btn btn-ghost btn-wide" data-action="cancelPending">${runCount ? 'Discard this run' : 'Discard this scan'}</button>`;
   } else {
     // ⚠ V8 (3C) — THE SUB-LINE APPEARS IN INITIAL ONLY. "Audit — pass or fail
     // only" restated the mode switch two blocks above it and cost a line on
@@ -434,7 +444,6 @@ function renderLogListHTML() {
       <button type="button" class="row row-loc" data-action="editRecord" data-arg="${escapeHTML(r.id)}">
         <span class="row-main">${escapeHTML(locationLabel(r))}</span>
         <span class="row-sub">Location · ${escapeHTML(r.mode)} · ${escapeHTML(r.code)} · ${escapeHTML(timeOfDay(r.ts))}</span>
-        ${r.exported ? '' : '<span class="row-dot" title="Not exported"></span>'}
       </button>`;
     }
     // V2: the room, not the bare barcode. "Kitchen" tells an engineer holding
@@ -448,13 +457,36 @@ function renderLogListHTML() {
     const bits = [r.description, r.cls ? 'Class ' + r.cls : '',
       r.visual === true ? 'Visual' : '', itemLocationShort(r)]
       .filter(isNonEmptyString).join(' · ');
+    // V11 (7A) — THE MODE, ON EVERY ITEM ROW, IN BOTH DIRECTIONS.
+    //
+    // ⚠ THIS IS THE ONE PLACE THE "ONLY THE NON-DEFAULT STATE IS PRINTED" RULE
+    // ABOVE DOES NOT APPLY, and the reason is the shape of the thing, not a
+    // change of heart. That rule is about the META LINE, where every word
+    // pushes the description and the room off the end — Visual earns its place
+    // there and Test does not. A badge sits in its own column at the right and
+    // costs the line nothing, so both labels are affordable, and the question
+    // being answered here is "which of the two is this", which silence cannot
+    // answer without the reader already knowing the convention.
+    //
+    // ⚠ GREEN IS NOT DECORATION EITHER. Initial tints the whole scan screen
+    // with --mode-tint; the badge uses the same token, so green means Initial
+    // in both places an engineer sees it. Do not give Audit a colour of its
+    // own — one signal, one meaning.
+    //
+    // ⚠ V11 (8A) — THE UNEXPORTED DOT IS GONE FROM BOTH ROW TYPES. It marked
+    // "not exported", which since V7 has been true of nearly every row until
+    // the moment the session goes out — and a marker on nearly every row is not
+    // a marker. Export is scoped to the session now, so the question it
+    // answered is one the log is the wrong place to ask. The count still lives
+    // on the Log tab, in Settings and in the export nudge.
+    const isInitial = r.mode === MODE_INITIAL;
     return `
     <button type="button" class="row row-item is-${escapeHTML(r.result || 'none')}"
             data-action="editRecord" data-arg="${escapeHTML(r.id)}">
+      <span class="row-mode ${isInitial ? 'is-initial' : 'is-audit'}">${isInitial ? 'INITIAL' : 'AUDIT'}</span>
       <span class="row-main">${escapeHTML(r.code)}
         <span class="row-result">${escapeHTML((r.result || '').toUpperCase())}</span></span>
       <span class="row-sub">${escapeHTML(bits || r.mode)}${r.failReason ? ' · ' + escapeHTML(r.failReason) : ''} · ${escapeHTML(timeOfDay(r.ts))}</span>
-      ${r.exported ? '' : '<span class="row-dot" title="Not exported"></span>'}
     </button>`;
   }).join('');
 }
@@ -867,10 +899,10 @@ function renderAbout() {
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V11</b> — a run of identical appliances can be logged in one go. In Initial mode, scan the first one, fill in the description, then set <b>How many</b> before you tap Continue. The app numbers the rest up from the one you scanned and shows you the exact range before it writes anything. If any of those numbers is already logged it stops and tells you which — it will never skip over one and carry on. Failing a run asks you to confirm, because only the first item was ever scanned. The log now shows <b>AUDIT</b> or <b>INITIAL</b> on every item, and the blue dot has gone.</p>
       <p class="muted small"><b>V10</b> — Change on the Location row now lists the locations from the session the item is actually in, rather than the one you happen to be working in. Before, an item from another engineer's batch — or from a job you finished last week — could be filed under a room that batch never contained, which the client's file would have shown as an item in a place that was not in it. Save &amp; scan is not offered on those items, because the room you are stood in belongs to today's session. The Sessions screen now says plainly that sharing a session is not the same as taking a backup.</p>
       <p class="muted small"><b>V9</b> — an item filed in the wrong room can now be moved by scanning. Tap it in the log, tap <b>Save &amp; scan</b> on the Location row, then stand in the right room and scan its location barcode. Anything else you had corrected on that item is saved first. Picking from the list still works exactly as before, and is still the way to do it when you are not stood in the room.</p>
       <p class="muted small"><b>V8</b> — the scan screen has been tightened up so it fits on the phone without scrolling. The session you are working in, and the last thing you recorded, are both visible at the bottom of the screen while you are between scans rather than just off the end of it. The last item is now a single line with Edit and Undo beside it. Once a location is set it takes one line instead of two, and the "Scan an asset" prompt only explains itself in Initial mode, where there is something to explain.</p>
-      <p class="muted small"><b>V7</b> — work is now kept in <b>sessions</b>: a named batch you scan into, shown at the foot of the scan screen and managed from Settings → Sessions. Exporting sends the whole of the session you are in — everything in it, whether it has been sent before or not — so the client always receives a complete batch rather than loose corrections. You can share a session with another engineer and import theirs; anything scanned by both of you is listed side by side so you can pick which result goes to the client before it lands. Sessions can be merged. The Class and Inspection switches are now the same width.</p>
       
       <p class="muted small">© 2026 Peter Birchley. All rights reserved.</p>
     </main>
@@ -883,13 +915,13 @@ function renderWelcome() {
     <main class="main welcome">
       <h1>PATGo Scan</h1>
 
-      <h2 class="sec">New in V9</h2>
+      <h2 class="sec">New in V11</h2>
       <ul>
-        <li><b>An item in the wrong room can be moved by scanning.</b> Tap it in the log, then tap <b>Save &amp; scan</b> on the Location row. The app comes back to the log and waits.</li>
-        <li><b>Then stand in the right room and scan its location barcode.</b> The item moves there. Nothing else about it changes.</li>
-        <li><b>It has to be a room you have already scanned today.</b> If it is somewhere new, set it as your location on the scan screen first — then come back and move the item.</li>
-        <li><b>Anything else you corrected on that item is saved first</b>, so a description you had just fixed is not lost when the screen changes.</li>
-        <li><b>Picking from the list has not gone anywhere.</b> Change is still there and still the quicker way when you are not stood in the room.</li>
+        <li><b>A shelf of identical items can go in as one run.</b> In Initial mode, scan the first one, fill in the description, then use <b>How many</b> before you tap Continue.</li>
+        <li><b>The rest are numbered up from the one you scanned</b> — 0998, 0999, 1000 and so on. The sheet shows you the exact range before anything is written. Check it against the labels in front of you.</li>
+        <li><b>If one of those numbers is already logged it stops and names it.</b> It will never skip a taken number and carry on, because that would move the end of your run without telling you. Do the run up to the gap, then start another after it.</li>
+        <li><b>PASS files the whole run on one tap. FAIL asks first.</b> Only the item you scanned came off a real label, so a fail is worth saying twice.</li>
+        <li><b>The log now says AUDIT or INITIAL on every item</b>, and the blue dot on each row has gone — exporting goes by session now, so it was marking almost everything.</li>
       </ul>
 
       <h2 class="sec">The whole app in four lines</h2>
@@ -925,9 +957,29 @@ function renderWelcome() {
 //   2. The DROPDOWN IS AN OVERLAY — position:absolute inside .desc-wrap, so it
 //      floats over the Class row instead of pushing it down. Showing and hiding
 //      it moves nothing. This is the pattern PATGo uses on its entry screen.
+//
+// ⚠ V11 — THE RUN CONTROL LIVES HERE AND NOWHERE ELSE (decision 1A). It is not
+// on the scan screen, and that is a height decision as much as a design one:
+// V8 spent a whole release buying ~150px back on that screen and 15e ratchets
+// every value it bought. Putting the count on the sheet costs the scan screen
+// nothing, reuses the description and quick-pick machinery already here, and —
+// the part that matters — guarantees the FIRST id of every run came off a real
+// label, because you cannot reach this sheet without scanning one.
+//
+// ⚠ IT IS NOT OFFERED ON A RE-SCAN. state._pendingReplaceId set means this
+// asset is already on file and the engineer chose to replace that result. A run
+// from there would replace one record and invent N-1 more, which is two
+// different operations wearing one button.
+//
+// ⚠ NOR ON A CODE WITH NO TRAILING DIGITS. There is nothing to count from, and
+// a control that appears for some barcodes and not others is honest — a control
+// that appears always and refuses on tap is not.
 function openNewItemSheet(code) {
   const sheet = _openSheet('New item');
   const picks = quickPickItems();
+  // V11. A run needs a countable code AND a fresh one — see the two notes above.
+  const canRun = runCodesFrom(code, 2).length === 2 && !state._pendingReplaceId;
+  let runCount = 1;
   sheet.innerHTML = `
     <h3 class="sheet-title">New item</h3>
     <p class="sheet-code">${escapeHTML(code)}</p>
@@ -944,6 +996,16 @@ function openNewItemSheet(code) {
     <p class="sheet-note">Class ${escapeHTML(state.itemClass)}${state.visualMode
       ? ' · <span class="sheet-note-warn">visual inspection only</span>'
       : ''} — set on the scan screen</p>
+    ${canRun ? `
+    <label class="lbl">How many</label>
+    <div class="runrow" role="group" aria-label="How many items">
+      <button type="button" class="run-step" data-run="-5">−5</button>
+      <button type="button" class="run-step" data-run="-1">−</button>
+      <span class="run-count" id="ni-count" aria-live="polite">1</span>
+      <button type="button" class="run-step" data-run="1">+</button>
+      <button type="button" class="run-step" data-run="5">+5</button>
+    </div>
+    <p class="sheet-note run-note" id="ni-runnote">Just this one</p>` : ''}
     <div class="sheet-actions">
       <button type="button" class="btn btn-ghost" id="ni-cancel">Cancel</button>
       <button type="button" class="btn btn-primary" id="ni-ok">Continue</button>
@@ -1001,6 +1063,40 @@ function openNewItemSheet(code) {
     });
   }
 
+  // V11 — the run stepper.
+  //
+  // ⚠ THE NOTE LINE NEVER WRAPS, AND THAT IS A LAYOUT RULE, NOT A STYLE. This
+  // sheet's oldest rule (V1.1) is that nothing in it may change the height of
+  // anything else in it while it is being used. "10 items: PAT-0998 to PAT-1007"
+  // is long enough to wrap on a phone at a count the engineer reaches by
+  // tapping, which would push Cancel and Continue down under the thumb already
+  // travelling towards them. `.run-note` is nowrap + ellipsis for that reason.
+  if (canRun) {
+    const countEl = sheet.querySelector('#ni-count');
+    const noteEl = sheet.querySelector('#ni-runnote');
+    const paintRun = () => {
+      countEl.textContent = String(runCount);
+      if (runCount < 2) { noteEl.textContent = 'Just this one'; return; }
+      const codes = runCodesFrom(code, runCount);
+      const clash = firstClashInRun(codes);
+      // ⚠ THE CLASH IS SHOWN HERE, WHILE THEY ARE STILL AT THE SHELF (3A). By
+      // the time Continue is pressed the engineer has stopped reading labels;
+      // by the time PASS is pressed they have moved on. This is the last moment
+      // the message "1004 is already logged" can be acted on cheaply.
+      noteEl.textContent = clash
+        ? clash + ' is already logged — shorten the run'
+        : runCount + ' items: ' + runRangeLabel(codes);
+      noteEl.classList.toggle('is-warn', !!clash);
+    };
+    sheet.querySelector('.runrow').addEventListener('click', (e) => {
+      const btn = e.target.closest('.run-step');
+      if (!btn) return;
+      runCount = clampInt(runCount + parseInt(btn.getAttribute('data-run'), 10), 1, RUN_MAX, 1);
+      paintRun();
+    });
+    paintRun();
+  }
+
   sheet.querySelector('#ni-cancel').onclick = () => { closeSheet(); render(); };
   sheet.querySelector('#ni-ok').onclick = () => {
     const d = titleCaseWords(cleanText(desc.value, 80));
@@ -1012,6 +1108,13 @@ function openNewItemSheet(code) {
     // stated rather than silent, and the "Pick a class" guard is gone because
     // there is no longer an unanswered state for it to catch — the toggle
     // always holds one of the two.
+    // V11 — the run is refused HERE rather than at PASS. Everything after this
+    // point is one tap away from the client's file, and an engineer who has
+    // walked to the next room cannot do anything useful with "1004 is taken".
+    if (canRun && runCount > 1) {
+      const clash = firstClashInRun(runCodesFrom(code, runCount));
+      if (clash) { showToast(clash + ' is already logged'); return; }
+    }
     closeSheet();
     state.pending = {
       code: code,
@@ -1019,6 +1122,7 @@ function openNewItemSheet(code) {
       description: d,
       cls: state.itemClass,
       visual: state.visualMode === true,
+      count: canRun ? runCount : 1,
     };
     render();
   };

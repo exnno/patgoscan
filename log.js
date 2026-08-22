@@ -362,6 +362,68 @@ function addItemRecord(pending, result, failReason) {
   return rec;
 }
 
+// ---------------------------------------------------------------------------
+// V11 — BATCH INITIALS. A run of identical appliances filed in one go.
+//
+// ⚠⚠ THIS IS THE FIRST TIME THIS APP WRITES A CODE NOBODY SCANNED, and every
+// rule below exists because of that one fact. The premise of the whole app has
+// been that each code on file came off a label; a run keeps that true for the
+// FIRST id and takes the engineer's word for the rest. So the engineer has to
+// be shown exactly what they are agreeing to before it is written, and the app
+// must never quietly decide something on their behalf.
+// ---------------------------------------------------------------------------
+
+// The first code in the list that is already an item in this session, or ''.
+//
+// ⚠ ONE DEFINITION, TWO CALLERS, ON PURPOSE. The New item sheet calls it early
+// so the engineer finds out while they are still stood at the shelf, and
+// addItemRun() calls it again immediately before writing. They are not two
+// tests that must agree — they are the same test asked twice, which is the only
+// shape of belt-and-braces that cannot drift.
+function firstClashInRun(codes) {
+  for (let i = 0; i < (codes || []).length; i++) {
+    if (findItemByCode(codes[i], null)) return codes[i];
+  }
+  return '';
+}
+
+// Write a run. Returns the records written, or null if it wrote nothing.
+//
+// ⚠ 3A — THE APP NEVER GUESSES ACROSS A GAP. If any id in the range is already
+// on file in this session the WHOLE run is refused and the clash is named. The
+// tempting alternative — skip the taken ones and carry on until N new records
+// exist — silently moves the end of the range, so the last id in the run is one
+// nobody ever held a label up against. Refusing costs the engineer two runs
+// (1000-1003, then 1005-) and costs the client nothing.
+//
+// ⚠ IT GOES THROUGH addItemRecord() FOR EVERY ITEM, DELIBERATELY. A second
+// record builder here would be a second place for the class rules, the reading
+// rules, the visual rule, the session stamp and the key order to be got right,
+// and the first release to change one of them would change it in one place
+// only. The cost is one save per item, which is real and is the right price.
+function addItemRun(pending, result, failReason) {
+  if (!pending || !pending.code) return null;
+  const codes = runCodesFrom(pending.code, pending.count);
+  if (codes.length < 2) return null;
+  if (firstClashInRun(codes)) return null;
+  const out = [];
+  for (let i = 0; i < codes.length; i++) {
+    // ⚠ THE PENDING ITEM IS COPIED PER ID, NOT MUTATED. Handing the same object
+    // round the loop with its code overwritten leaves the caller's pending item
+    // holding the LAST id in the run, which is what the screen would then be
+    // discarding, undoing or re-rendering.
+    const rec = addItemRecord({
+      code: codes[i],
+      mode: pending.mode,
+      description: pending.description,
+      cls: pending.cls,
+      visual: pending.visual,
+    }, result, failReason);
+    if (rec) out.push(rec);
+  }
+  return out.length ? out : null;
+}
+
 // Overwrite an earlier scan of the same asset (the duplicate flow). The ORIGINAL
 // id and timestamp are kept deliberately: this is a correction of one event, not
 // a second event, and re-stamping it would move it to the end of the day's work.

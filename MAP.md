@@ -1,4 +1,4 @@
-# PATGo Scan — Code Map (V10)
+# PATGo Scan — Code Map (V11)
 
 Routing only: which concern lives in which file, and the cross-file couplings
 you cannot discover by reading one file. Read this to decide *what to open*.
@@ -79,7 +79,19 @@ you cannot discover by reading one file. Read this to decide *what to open*.
     `.sheet-backdrop` or `.bulk-sheet` in CSS alone will not do what it looks
     like it does. Harness 10k–10p, mutations M71–M77.
 
-14. **Two independent scanner ceilings, not one.** The gap preset judges a
+14. **⚠⚠ V11 — THE APP INVENTS AN ASSET ID IN EXACTLY ONE PLACE, AND IT IS
+    `runCodesFrom()` IN utils.js.** Everywhere else, every code on file came off
+    a label — that was true of the whole app until V11 and it is still true of
+    everything except items 2..N of a batch initial. Three rules hold the line
+    and all three are asserted (16a–16j, mutations M177–M183):
+    the counting is **pure** and lives in utils.js with no state near it; the
+    engineer is shown the **exact range** before anything is written; and a run
+    that meets an id already on file is **refused whole, never skipped past**.
+    ⚠ Skipping a taken id and carrying on to make N new ones is the tempting
+    version and it is the wrong one — it moves the end of the range, so the last
+    id in the run is one nobody held a label against.
+
+15. **Two independent scanner ceilings, not one.** The gap preset judges a
     burst; `scanEndMs()` decides where one burst ends and the next begins. The
     second must always exceed the first, which is why it is derived from it and
     not a constant. Raising a preset alone re-caps at the boundary.
@@ -123,6 +135,12 @@ M174 survived its first run because of it. Everything else stays permissive.
 `getElementById` sees nodes the app appended. Before that, `sheetIsOpen()` read
 false with a sheet open, `_closeSheet()` removed nothing, and the sheet tests
 passed only because `openSheetEl()` reads the last child of body. Mutation M78.
+⚠ **V11: `F.resetApp()` ALSO CLEARS THE TOAST.** `showToast()` appends its node
+to `<body>` ONCE and reuses it forever, so a message survives every reset and
+every render — a group asserting something stayed SILENT reads the previous
+group's toast and fails, pointing at working code in a group that never called
+showToast. Found by exactly that: 16g went red because 16f had just written a
+run receipt. Third member of the same family as the two below.
 ⚠ `F.resetApp()` closes any open sheet and clears `doc.activeElement` FIRST.
 Both block the scanner (`_scanTarget()` bails on `sheetIsOpen()`, and on focus
 sitting in a detached node with the same id), so a group that leaks either makes
@@ -172,6 +190,12 @@ The live values are in `state` and editable in Settings; the figure is COPIED
 onto each record as it is logged, so changing the setting never rewrites past
 work (decision 4B).
 
+**⚠ V11: `RUN_MAX` IS A SAFETY LIMIT, NOT A UI ONE.** It caps a batch initial.
+Every id in a run after the first is invented, so a mis-typed count is the only
+thing in this app that can put dozens of unseen rows into the client's system on
+one tap. The range preview on the New item sheet is the other half of it: the
+ceiling stops the absurd, the preview stops the plausible-but-wrong.
+
 ### state.js (~130 ln) — the global `state` object
 The single `let state = {…}`. Persisted fields, transients, derived.
 **Touch to:** add a runtime field.
@@ -181,6 +205,11 @@ They decide what is written into the client's file, not how the app feels, and
 they are sticky across restarts (decision 7A). ⚠ Anything the app persists
 deliberately must also be reset in `harness/fixture.js resetApp()` or the first
 test to flip it sets it for every test after it.
+⚠ **V11 — `pending` MAY HOLD A RUN, AND `count` IS THE WHOLE OF WHAT MAKES IT
+ONE.** There is no second flag and no stored list of the other codes: they are
+derived from the code and the count by `runCodesFrom()` wherever they are
+needed, so there is nothing that can fall out of step with the first id and no
+way to be half in a run. 1 or absent for every ordinary scan.
 **Coupling:** a new transient must also be cleared in `setView()` (render.js) —
 rule 4. ⚠ **V9 — `moveArmed` holds an ITEM ID, not a flag.** A boolean would need
 a second field naming the item, and two fields that must agree can be half-set.
@@ -190,6 +219,15 @@ It is cleared by `setView()` like every other transient, which is why
 ### utils.js (~110 ln) — pure helpers, no state access
 Escaping, ids, local timestamps, title-casing, CSV cell quoting, sorting.
 **Touch to:** add a stateless helper.
+⚠ **V11 — `splitTrailingNumber()` / `runCodesFrom()` / `runRangeLabel()` ARE
+THE ONLY PLACE AN ASSET ID IS INVENTED (rule 14).** They are here rather than in
+log.js so that what an id becomes can be reasoned about and broken on its own,
+with no records, no session and no state anywhere near it. Three traps, each
+with its own mutation: the prefix split is LAZY (greedy turns `PAT-0998` into
+`PAT-09910`, M177); the padding is restored while it fits and allowed to GROW
+when it cannot (M178); and a tail longer than 15 digits is REFUSED rather than
+counted, because past the safe integer range parseInt returns a number close to
+the label instead of equal to it — first id right, tenth quietly wrong (M179).
 **Coupling:** none by design. ⚠ `csvCell()` quotes EVERY cell — a fail reason is
 editable and will eventually contain a comma. ⚠ `stampLocal()` is deliberately
 not `toISOString()`; UTC would export an 08:15 scan as 07:15 in British summer.
@@ -217,6 +255,15 @@ items from other batches, and offering today's rooms for one of them files it
 under a location its own export does not contain. Same hole V9 closed from the
 scanning side. Callers pass the RECORD's `sessionId`. Harness 11ab–11ag,
 mutations M169/M170/M172.
+⚠ **V11 — `addItemRun()` GOES THROUGH `addItemRecord()` FOR EVERY ITEM.** A
+second record builder here would be a second home for the class rules, the
+reading rules, the visual rule, the session stamp and the key order, and the
+first release to change one of them would change it in one place only. The cost
+is one save per item and it is the right price. It refuses the WHOLE run on a
+clash (`firstClashInRun()`, rule 14) and copies the pending item per id rather
+than mutating it — handing the same object round the loop leaves the caller's
+pending item holding the LAST id in the run. Harness 16f–16j, mutations
+M180/M181.
 ⚠ `replaceItemRecord()` keeps the original id and ts: a correction is one event,
 not a second one. ⚠ V4 — A MOVE DOES NOT RE-STAMP EITHER, for the same reason.
 The moved row therefore keeps its place in the timestamp-ordered export and can
@@ -346,7 +393,31 @@ message rather than passing it through. Do not add a raw-text fallback.
 limit: boot.js loads last, so a parse-time failure earlier predates these
 handlers — the integrity guard covers that case instead.
 
-### render.js (~1550 ln) — every screen, every sheet
+### render.js (~1600 ln) — every screen, every sheet
+
+⚠ **V11 — THE RUN CONTROL IS ON THE NEW ITEM SHEET AND NOWHERE ELSE (1A), and
+that is a height decision as much as a design one.** V8 spent a release buying
+~150px back on the scan screen and 15e ratchets every value it bought; the sheet
+costs that screen nothing, reuses the description and quick-pick machinery, and
+guarantees the FIRST id of every run came off a real label, because the sheet
+cannot be reached without scanning one. It is NOT offered on a re-scan
+(`state._pendingReplaceId`) nor on a code with no trailing digits — M183.
+⚠ **`.run-note` IS nowrap + ellipsis AND THAT IS THIS SHEET'S OLDEST RULE, NOT
+A STYLE CHOICE.** Nothing in this sheet may change the height of anything else
+in it while it is being used (V1.1). The note's text grows with the count —
+"10 items: PAT-0998 to PAT-1007" wraps on a phone at a count reached by tapping,
+which pushes Cancel and Continue down under a thumb already travelling.
+⚠ **THE PENDING PANEL GAINS NO LINE FOR A RUN.** It is the screen V8 measured as
+still overflowing by ~163px (2A), so the run says itself in the three elements
+already there: the code line becomes the range, the description line gains the
+count, and the buttons say how many they write. Harness 16o/16p, M186.
+⚠ **V11 — THE LOG'S MODE BADGE IS THE ONE EXEMPTION TO "ONLY THE NON-DEFAULT
+STATE IS PRINTED" (7A), and the exemption is about SHAPE.** That rule is about
+the meta line, where every word pushes the description and the room off the end.
+A badge sits in its own column and costs the line nothing, so both labels are
+affordable — and one label alone is the rule, not the decision (M187). It reads
+`r.mode`, never `state.mode`: rule 11, and the log is the screen an engineer
+checks BECAUSE they think they were in the wrong mode (M188).
 
 ⚠ **V9 — THE EDIT SHEET SAVES BEFORE IT ARMS A MOVE (3A), and that is not
 optional politeness.** Arming closes the sheet and closing the sheet destroys
@@ -413,7 +484,16 @@ anything can fail, so every path out — moved, refused, wrong session, unknown
 code — leaves the app disarmed; an arm that outlived its own error case would
 take the next barcode too. ⚠ `armMove()` calls `setView('log')` BEFORE setting
 `state.moveArmed`, because `setView()` clears every transient: the obvious order
-disarms silently and nothing on screen says why. ⚠ A throw inside any action is caught
+disarms silently and nothing on screen says why. ⚠ **V11 — PASS COMMITS A RUN ON ONE TAP AND FAIL DOES NOT (decision 5), AND THE
+ASYMMETRY IS THE SAFETY FEATURE.** Same shape as the Visual toggle colouring in
+while Test stays quiet: the costly outcome is the one said twice. PASS already
+reads "PASS ALL 10" before the thumb lands and a wrong pass is corrected in the
+log; a wrong fail is ten rows carrying a fail reason into the client's system,
+and the reason is the part acted on at their end. Do not "tidy" this by
+confirming both — a confirmation on the outcome that happens all day stops being
+read and takes the weight out of this one. M184. ⚠ A REFUSED RUN LEAVES THE
+PENDING ITEM WHERE IT IS; every other path through `commitResult()` clears, so
+that branch needs its own assertion (M185). ⚠ A throw inside any action is caught
 here and recovered to the scan screen; assert this through
 `handleDelegatedClick`, never through `render()`. ⚠ Text-input actions must not
 `render()` on a keystroke. ⚠ File inputs must clear `el.value` immediately.
@@ -453,6 +533,15 @@ when `load()` threw — that is what keeps a bad release recoverable.
   holds a ceiling on each of the nine declared values V8 shrank. Raising one is a
   deliberate act: raise the ceiling too and say why in the handoff. A ceiling
   edited quietly to match a new value is the same as not having one.
+
+  ⚠ **V11 — `.row-mode` IS ABSOLUTELY POSITIONED AND `.row-item` CARRIES THE
+  GUTTER IT SITS IN.** Ship one without the other and a long asset code runs
+  underneath the badge: it renders, it passes every behaviour assertion, and it
+  is unreadable on the phone. Same coupling class as the V8 scan-screen blocks.
+  Harness 16t, mutation M189. ⚠ The Initial badge is `--mode-tint`, NOT
+  `--accent-soft` — see the token note above; green means Initial on the scan
+  screen and in the log by construction, and a second colour for Audit would put
+  two things shouting on one row.
   ⚠ `.sheet-backdrop` / `.bulk-sheet` sizing is JS-driven — rule 13. The values
   here are the keyboard-down fallback, not the working geometry.
 - `index.html` — the `<script>` chain. Small enough to read whole.

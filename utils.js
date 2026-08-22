@@ -104,6 +104,66 @@ function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim().length > 0;
 }
 
+// ---------------------------------------------------------------------------
+// V11 — THE RUN. Turning one scanned asset id into the next N.
+//
+// ⚠⚠ THIS IS THE ONLY PLACE IN THE APP THAT INVENTS AN ASSET ID, and until V11
+// the app did not do that at all — every code on file had come off a label. The
+// two functions below are deliberately PURE and deliberately here rather than
+// in log.js, so that what an id becomes can be reasoned about, tested and
+// broken on its own, with no records, no session and no state anywhere near it.
+// ---------------------------------------------------------------------------
+
+// Split a code into its leading part and its trailing digits. Returns null when
+// there are no trailing digits — which is the answer to "what about a code we
+// cannot count from": there is no run, and the control is never offered.
+//
+// ⚠ THE PREFIX IS LAZY AND THE DIGITS ARE ANCHORED TO THE END, so 'PAT-0998'
+// splits as 'PAT-' + '0998' and not as 'PAT-' + '0' + junk. A greedy prefix
+// would take all but the last digit and count 'PAT-099' upwards in units of
+// one, which is the same shape of bug as an off-by-one and far harder to see.
+function splitTrailingNumber(code) {
+  const s = String(code == null ? '' : code);
+  const m = s.match(/^(.*?)(\d+)$/);
+  if (!m) return null;
+  return { prefix: m[1], digits: m[2] };
+}
+
+// The codes a run of `count` items would use, starting AT the scanned one.
+// An empty array means "no run is possible from this code" and every caller
+// treats it that way rather than falling back to something clever.
+function runCodesFrom(code, count) {
+  const parts = splitTrailingNumber(code);
+  if (!parts) return [];
+  // ⚠ REFUSED RATHER THAN ROUNDED. Beyond 15 digits parseInt is past the safe
+  // integer range and starts returning a number that is CLOSE to the label
+  // rather than equal to it — so the first id would be right, the second
+  // plausible, and the tenth quietly wrong in the client's system. A code that
+  // long is not a run; it is a serial number.
+  if (parts.digits.length > 15) return [];
+  const n = (typeof count === 'number' && count > 0) ? Math.floor(count) : 0;
+  const width = parts.digits.length;
+  const start = parseInt(parts.digits, 10);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const v = String(start + i);
+    // ⚠ THE PADDING IS RESTORED WHILE IT FITS AND ALLOWED TO GROW WHEN IT DOES
+    // NOT. '0998' → '0999' → '1000': four digits throughout, and the run does
+    // not stop at the end of the padding. Truncating back to the original width
+    // would turn 1000 into 000 and file three items under one id.
+    out.push(parts.prefix + (v.length >= width ? v : '0'.repeat(width - v.length) + v));
+  }
+  return out;
+}
+
+// How a run is named on screen and in a confirmation. One item is just its own
+// code — "1 item: 1000 to 1000" reads like a bug.
+function runRangeLabel(codes) {
+  if (!codes || !codes.length) return '';
+  if (codes.length === 1) return codes[0];
+  return codes[0] + ' to ' + codes[codes.length - 1];
+}
+
 function clampInt(v, lo, hi, dflt) {
   const n = parseInt(v, 10);
   if (!isFinite(n)) return dflt;

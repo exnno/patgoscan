@@ -10,6 +10,59 @@ things worth considering when the client's actual working day suggests them.
 
 *(Nothing outstanding. Both long-running questions closed in V6.)*
 
+## Closed in V11
+
+- **~~Batch initials.~~** ✅ SHIPPED V11, and it is **the first time this app has
+  ever written an asset code nobody scanned.** Scan the first item in Initial
+  mode, fill the description, set **How many**, and the rest are numbered up from
+  it. ⚠ THE THREE RULES THAT MAKE IT SAFE ARE NOT DECORATION, they are the
+  answer to that one fact: the counting is a pure function with no state near it
+  (`runCodesFrom()`, utils.js); the **exact range is shown before anything is
+  written**, so the engineer reads it against the labels in front of them; and a
+  run that meets an id already on file is **refused whole and the clash named**.
+  ⚠ SKIPPING A TAKEN ID AND CARRYING ON WAS THE TEMPTING VERSION AND IS THE
+  WRONG ONE — it moves the end of the range, so the last id is one nobody held a
+  label against. Do the run up to the gap, then start another after it.
+- **~~You cannot tell an audit row from an initial one in the log.~~** ✅ FIXED
+  V11 (7A). A badge on every item row, both ways round. ⚠ THIS IS THE ONE
+  EXEMPTION TO "ONLY THE NON-DEFAULT STATE IS PRINTED", and the exemption is
+  about shape: that rule protects the META LINE, where every word pushes the
+  description and the room off the end. A badge sits in its own column and costs
+  the line nothing — so printing the quiet one too is affordable, and printing
+  only Initial would have been the rule rather than the decision.
+- **~~The blue unexported dot on every log row.~~** ✅ REMOVED V11 (8A). It
+  marked "not exported", which since V7 has been true of nearly every row until
+  the session goes out — and a marker on nearly every row is not a marker.
+  Export is scoped to the session now, so it was answering a question the log is
+  the wrong place to ask. The count still lives on the Log tab, in Settings and
+  in the export nudge.
+
+## Raised in V11
+
+- **⚠ A RUN HAS NO UNDO.** Undo on the last-item block removes ONE item, so
+  correcting a wrongly-committed run of twenty means twenty deletions from the
+  log. Deliberately not built: a batch undo needs a selection mechanism the log
+  does not have — the same one the V10 note wants for moving several items at
+  once — and inventing one to cover a mistake nobody has made yet is how a
+  feature grows a second feature before it has earned the first. ⚠ WATCH FOR IT
+  IN THE FIELD. If it bites, the two asks share an answer and should be specced
+  together.
+- **⚠ A toast written once is a toast that outlives its group.** `showToast()`
+  appends its node to `<body>` ONCE and reuses it forever, so the message
+  survives every `resetApp()` — and 16g went red asserting that a single scan
+  stays SILENT, because 16f's run receipt was still sitting in the node. Working
+  code, a group that never called showToast, and a failure pointing nowhere near
+  the fault. Now cleared in the fixture beside the sheet and the focus, which
+  are there for the same reason. **This is the fifth documented way this suite
+  has reported something other than what it was testing**, after wrong selector,
+  wrong text, wrong edit and wrong stub: **leaked output.**
+- **⚠ A hollow assertion removed rather than re-pointed.** 10j's "About leads
+  with V10" read `about.indexOf('<b>V10</b>') !== -1` — true of a changelog with
+  V10 ANYWHERE in it, including at the bottom, so it could not fail while the
+  entry survived at all. `entries[0]` two lines below was already the assertion
+  it was pretending to be. Re-pointing it to V11 would have carried the
+  hollowness forward for another release.
+
 ## Closed in V10
 
 - **~~The picker can point an item at a location in another session.~~** ✅ FIXED
@@ -39,11 +92,9 @@ things worth considering when the client's actual working day suggests them.
   on a node whose innerHTML does not contain that id returns null. This is the
   fourth documented way a mutation or stub has failed to test what it claimed
   here, after wrong selector, wrong text and wrong edit: **wrong stub.**
-- **Batch initials.** Raised by Peter alongside V10 and deliberately not in it —
-  scan a start number, set a count, and file that many items with the same
-  description, class and result. ⚠ IT IS THE FIRST TIME THE APP WOULD INVENT AN
-  ASSET ID RATHER THAN READ ONE, which is a change to what the app is for and
-  needs its own release and its own decisions. Specced separately.
+- **~~Batch initials.~~** ✅ SHIPPED V11 — see "Closed in V11" above. The V10
+  note was right about the shape of it: it did need its own release and its own
+  decisions, and the decision that mattered was the one about the gap.
 
 ## Closed in V9
 

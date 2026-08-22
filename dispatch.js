@@ -191,11 +191,35 @@ function commitResult(result, failReason) {
   const replaceId = state._pendingReplaceId || '';
   let rec;
   if (replaceId) rec = replaceItemRecord(replaceId, pending, result, failReason);
+  // V11 — a run. ⚠ THE BRANCH IS ON THE PENDING ITEM, NOT ON A SECOND FLAG.
+  // `count` is the whole of what makes this a run, so there is no way to be
+  // half in one. A run and a replace cannot both be true — the sheet does not
+  // offer the count on a re-scan — and the order here states which would win if
+  // that ever stopped being enforced upstream: the replace, because overwriting
+  // one known record is the smaller mistake of the two.
+  else if (pending.count > 1) rec = addItemRun(pending, result, failReason);
   else rec = addItemRecord(pending, result, failReason);
+
+  // ⚠ A REFUSED RUN LEAVES THE PENDING ITEM WHERE IT IS. addItemRun() returns
+  // null when an id in the range has been taken since the sheet checked, and
+  // clearing the pending item on that path would throw away a scan and a typed
+  // description to say nothing at all. Every other path clears, as it always
+  // has: a written record is finished with.
+  if (!rec && pending.count > 1) {
+    showToast('One of those numbers is already logged');
+    render();
+    return;
+  }
 
   state.pending = null;
   state._pendingReplaceId = '';
   if (rec) feedback(result);
+  // ⚠ A RUN SAYS HOW MANY IT WROTE, AND A SINGLE SCAN STAYS SILENT. Six records
+  // appearing at once is the one commit in this app whose size is not obvious
+  // from the screen afterwards — the last-item block shows the LAST id and the
+  // counts have moved by an amount nobody is counting. A toast on every single
+  // scan would be noise all day; on a run it is the receipt.
+  if (rec && pending.count > 1) showToast(pending.count + ' items recorded');
   render();
 }
 
@@ -258,8 +282,36 @@ const ACTIONS = {
     });
   },
 
+  // ⚠ V11 — PASS COMMITS A RUN ON ONE TAP AND FAIL DOES NOT, AND THE ASYMMETRY
+  // IS THE SAFETY FEATURE. It is the same shape as the Visual toggle colouring
+  // in while Test stays quiet: the costly outcome is the one that has to be
+  // said twice. The PASS button already reads "PASS ALL 10", which states the
+  // count before the thumb lands, and a pass wrongly given is corrected in the
+  // log. A fail wrongly given is ten rows with a fail reason in the client's
+  // system, and the reason is the part that gets acted on at their end.
+  //
+  // ⚠ DO NOT "TIDY" THIS BY CONFIRMING BOTH. A confirmation on the outcome that
+  // happens all day is a confirmation that stops being read, and it would take
+  // the weight out of this one.
   pass: () => commitResult('pass', ''),
-  fail: () => openFailSheet((reason) => commitResult('fail', reason)),
+
+  fail: () => openFailSheet((reason) => {
+    const p = state.pending;
+    const n = (p && p.count > 1) ? p.count : 0;
+    if (!n) { commitResult('fail', reason); return; }
+    openConfirmSheet({
+      title: 'Fail all ' + n + ' items?',
+      body: runRangeLabel(runCodesFrom(p.code, n)) + ' — ' + n +
+            ' items recorded as FAIL, reason: ' + reason +
+            '. Only ' + p.code + ' was scanned; the rest are numbered from it.',
+      confirmLabel: 'Fail all ' + n, danger: true,
+      onConfirm: () => commitResult('fail', reason),
+      // ⚠ THE PENDING RUN SURVIVES A CANCEL. Backing out of this returns to the
+      // verdict panel with the run intact, so "no, not all of them" costs a tap
+      // rather than a re-scan and a retyped description.
+      onCancel: () => render(),
+    });
+  }),
 
   cancelPending: () => {
     state.pending = null;

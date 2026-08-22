@@ -7,13 +7,13 @@
  * read in one place — that is what makes the backup file provably complete.
  */
 
-const APP_VERSION = 'V10';
+const APP_VERSION = 'V11';
 
 // The welcome modal key carries the version IN THE VALUE, never in the
 // identifier. A version-named identifier caused a white screen in the parent
 // app (PATGo v61) when one file was updated and another was not.
 const WELCOME_KEY = 'scan:welcome';
-const WELCOME_VERSION = 'V9';
+const WELCOME_VERSION = 'V11';
 
 // ---------------------------------------------------------------------------
 // Storage keys
@@ -186,6 +186,19 @@ const READING_MAX = 20;
 // client's sample, not a display style applied to it.
 const CSV_PASS = 'PASS';
 const CSV_FAIL = 'FAIL';
+
+// ---------------------------------------------------------------------------
+// V11 — THE CEILING ON A RUN OF INITIALS (decision 4).
+//
+// ⚠ THIS IS A SAFETY LIMIT, NOT A UI ONE. Every id in a run after the first is
+// INVENTED — nobody scanned it — so a fat-fingered count is the only thing in
+// this app that can put dozens of rows the engineer never saw into the client's
+// system in one tap. Fifty is high enough for any real shelf of identical
+// appliances and low enough that a mis-tap is survivable.
+//
+// The range preview on the New item sheet is the other half of this: the
+// ceiling stops the absurd, the preview stops the plausible-but-wrong.
+const RUN_MAX = 50;
 
 const MODE_AUDIT = 'audit';
 const MODE_INITIAL = 'initial';

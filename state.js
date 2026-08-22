@@ -98,7 +98,13 @@ let state = {
   // deliberately NOT in `records` — an item with no result is not data, and
   // writing it early would mean a mis-scan had to be found and deleted rather
   // than simply re-scanned over.
-  pending: null,             // { code, mode, description, cls, visual }
+  //
+  // ⚠ V11 — IT MAY NOW HOLD A RUN. `count` is how many items the one PASS or
+  // FAIL about to be pressed will write, and it is 1 or absent for every scan
+  // that is not a batch initial. The other ids are NOT stored here: they are
+  // derived from the code and the count by runCodesFrom() wherever they are
+  // needed, so there is no second list to fall out of step with the first id.
+  pending: null,             // { code, mode, description, cls, visual, count }
 
   // --- Transient: sheets ----------------------------------------------------
   newItemSheet: null,        // { code } — initial mode, gathering desc + class

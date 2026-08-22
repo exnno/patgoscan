@@ -495,10 +495,47 @@ li { margin-bottom: 8px; }
 .row-item.is-pass .row-result { color: var(--pass); }
 .row-item.is-fail .row-result { color: var(--fail); }
 .row-loc { border-left: 4px solid var(--accent); }
-.row-dot {
-  position: absolute; top: 16px; right: 14px;
-  width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
+
+/* V11 (7A) — the mode badge on an item row.
+   ⚠ IT SITS WHERE THE UNEXPORTED DOT USED TO (8A), which is why .row-item
+   carries extra right padding below and .row does not: the badge is absolutely
+   positioned, so without that gutter a long asset code runs underneath it.
+   ⚠ GREEN IS --mode-tint, THE SAME TOKEN THE INITIAL SCAN SCREEN USES. Green
+   means Initial in both places by construction. Audit is deliberately colourless
+   — one signal, one meaning, and a second colour would give the row two things
+   shouting at once. */
+.row-mode {
+  position: absolute; top: 12px; right: 10px;
+  padding: 2px 6px; border-radius: 6px;
+  font-size: 10px; font-weight: 700; letter-spacing: .06em;
+  border: 1px solid var(--line); background: var(--bg); color: var(--ink-soft);
 }
+.row-mode.is-initial {
+  background: var(--mode-tint); border-color: var(--mode-tint-line); color: var(--ink);
+}
+.row-item { padding-right: 76px; }
+/* V11 — the run stepper on the New item sheet.
+   ⚠ THE NOTE LINE IS ONE LINE, ALWAYS. This sheet's V1.1 rule is that nothing
+   in it may change the height of anything else while it is being used, and the
+   note's text grows with the count — "10 items: PAT-0998 to PAT-1007" wraps on
+   a phone. Wrapping would push Cancel and Continue down under a thumb already
+   moving towards them. nowrap + ellipsis, not a taller box. */
+.runrow {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 6px;
+}
+.run-step {
+  flex: 1 1 0; min-height: 44px;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--bg-alt); color: var(--ink);
+  font-family: inherit; font-size: 17px; font-weight: 600; cursor: pointer;
+}
+.run-count {
+  flex: 0 0 56px; text-align: center;
+  font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+.run-note { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.run-note.is-warn { color: var(--fail); }
+
 .rowline {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   min-height: var(--tap); padding: 6px 2px; border-bottom: 1px solid var(--line);
