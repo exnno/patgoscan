@@ -49,6 +49,22 @@ function eq(label, actual, expected) {
   return false;
 }
 
+// V7. ⚠ ADDED BECAUSE "IT CHANGED" IS A REAL ASSERTION AND eq() CANNOT MAKE IT.
+// Several V7 properties are about a value NOT being something — a record that
+// must not land in the closed session, an id that must not still clash. Written
+// as `A.ok('...', a !== b)` those read as a bare true/false in the failure list
+// with neither value shown, which is exactly the report you do not want at the
+// point a mutation trips it.
+function notEq(label, actual, unexpected) {
+  const a = JSON.stringify(actual);
+  const u = JSON.stringify(unexpected);
+  if (a !== u) { passed++; return true; }
+  failed++;
+  failures.push((currentGroup ? currentGroup + ' › ' : '') + label +
+    '\n      expected anything but: ' + u);
+  return false;
+}
+
 function includes(label, haystack, needle) {
   return ok(label, String(haystack).indexOf(needle) !== -1);
 }
@@ -86,4 +102,4 @@ function summary() {
 
 function counts() { return { passed, failed }; }
 
-module.exports = { group, ok, eq, includes, excludes, throws, known, summary, counts };
+module.exports = { group, ok, eq, notEq, includes, excludes, throws, known, summary, counts };

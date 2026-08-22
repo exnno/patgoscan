@@ -147,6 +147,22 @@ function resetApp(app) {
   // green against a validator that had stopped agreeing with the app.
   st.itemPresets = app.fn('makeDefaultPresets')();
   st.activePresetId = st.itemPresets[0].id;
+
+  // V7. ⚠ SESSIONS ARE PERSISTENT STATE AND SO THEY GET RESET HERE, by exactly
+  // the argument in the V5 note above. Worse than the toggles, though: a
+  // session left behind by an earlier group means the next group's records are
+  // stamped with ITS id, and every log helper is now scoped to the current
+  // session — so the records would be written, saved, and INVISIBLE to
+  // itemRecords(), logTotals() and the export. The failure would read as "the
+  // export dropped everything" in a group that never touched sessions.
+  //
+  // ⚠ THE OPEN SESSION IS MADE BY THE APP, not built here. A hand-rolled
+  // session object would go green against a validator that had stopped
+  // agreeing with the app — the same trap the presets note above describes.
+  st.sessions = [];
+  st.currentSessionId = '';
+  st.review = null;
+  app.fn('ensureOpenSession')();
 }
 
 // --- V1.1 sheet helpers ----------------------------------------------------

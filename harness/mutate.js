@@ -39,7 +39,7 @@ const MUTATIONS = [
   // the version bump breaks the find string and the mutation reports SKIPPED.
   // Update it as part of the bump; a skip here means the cache-key invariant
   // is unguarded for that release, which is how a build ships without one.
-  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v6'", "const CACHE_VERSION = 'pat-v71'",
+  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v7'", "const CACHE_VERSION = 'pat-v71'",
     'cache key using the parent app prefix'],
   ['M04', 'utils.js', '(c) 2026 Peter Birchley. All rights reserved.', '(c) 2026',
     'copyright header stripped'],
@@ -153,11 +153,17 @@ const MUTATIONS = [
   ['M39', 'config.js', "  { key: 'DESCRIPTION', cell: (r) => (r.mode === MODE_INITIAL ? (r.description || '') : '') },",
     "  { key: 'DESCRIPTION', cell: (r) => (r.mode === MODE_INITIAL ? (r.code || '') : '') },",
     'a column carrying the wrong value under the right header'],
-  ['M40', 'csv.js', 'const list = state.records.slice().sort((a, b) => (a.ts || 0) - (b.ts || 0));',
-    'const list = state.records.slice().sort(byNewest);',
+  // ⚠ V7: RETARGETED. The sort moved into the session-scoped recordsForExport().
+  ['M40', 'csv.js', '    .sort((a, b) => (a.ts || 0) - (b.ts || 0));\n}',
+    '    .sort(byNewest);\n}',
     'export order reversed — locations after the items under them'],
-  ['M41', 'csv.js', 'return onlyUnexported ? list.filter(r => !r.exported) : list;', 'return list;',
-    '"export new only" exporting everything'],
+  // ⚠ V7: REPLACED, NOT DELETED. M41 guarded "export new only exports only the
+  // new ones" — an invariant decision 3B deliberately retired. The opposite
+  // property is now the one worth defending: a file is the WHOLE session, and
+  // quietly reintroducing a delta filter is the regression to catch.
+  ['M41', 'csv.js', '  return state.records\n    .filter(r => inCurrentSession(r))',
+    '  return state.records\n    .filter(r => inCurrentSession(r) && !r.exported)',
+    'a delta filter creeping back into a whole-session export (3B)'],
   ['M42', 'csv.js', 'for (let i = 0; i < records.length; i++) records[i].exported = true;',
     'state.records = state.records.filter(r => !r.exported);',
     'export deleting records instead of flagging them'],
@@ -321,8 +327,8 @@ const MUTATIONS = [
   ['M85', 'log.js', '    row.count++;', '',
     'picker rows that cannot say how much was done in a room'],
   ['M86', 'log.js',
-    "  const items = state.records.filter(r => r.type === 'item').sort(byNewest);",
-    "  const items = state.records.filter(r => r.type === 'item');",
+    "  const items = state.records.filter(r => r.type === 'item' && inCurrentSession(r)).sort(byNewest);",
+    "  const items = state.records.filter(r => r.type === 'item' && inCurrentSession(r));",
     'samples in storage order rather than what was tested there last'],
   ['M87', 'render.js', '          const named = label !== loc.code;', '          const named = true;',
     'an unnamed location printing its barcode twice in one row'],
@@ -493,9 +499,111 @@ const MUTATIONS = [
   ['M130', 'render.js', '      ${renderLastItem()}', '',
     'the last item quick view missing from the scan screen'],
 
-  ['M131', 'log.js', "    if (r.type !== 'item') continue;\n    if (!best || byNewest(r, best) < 0) best = r;",
+  ['M131', 'log.js', "    if (r.type !== 'item' || !inCurrentSession(r)) continue;\n    if (!best || byNewest(r, best) < 0) best = r;",
     "    if (!best || byNewest(r, best) < 0) best = r;",
     'the quick view offering a location as the last thing recorded'],
+
+  // --- V7: sessions ------------------------------------------------------
+  //
+  // ⚠ THE SCOPING MUTATIONS ARE THE ONES THAT MATTER. Every helper below was
+  // global before V7 and every one of them stayed green when it was scoped,
+  // because one session behaves exactly like no sessions. If any of these
+  // survives, the group that claims to cover it is only ever building one
+  // session and is not testing scoping at all.
+
+  ['M132', 'sessions.js', 'function inCurrentSession(r) {\n  return !!r && r.sessionId === state.currentSessionId;',
+    'function inCurrentSession(r) {\n  return true;',
+    'every scoped helper seeing every session on the phone'],
+
+  ['M133', 'log.js', "  return state.records.filter(r => r.type === 'item' && inCurrentSession(r));",
+    "  return state.records.filter(r => r.type === 'item');",
+    'the log showing another engineer\'s items mixed into your own'],
+
+  ['M134', 'csv.js', '  return state.records\n    .filter(r => inCurrentSession(r))',
+    '  return state.records\n    .filter(r => true)',
+    'the export sending every session on the phone to the client'],
+
+  ['M135', 'csv.js', '    .sort((a, b) => (a.ts || 0) - (b.ts || 0));',
+    '    .sort((a, b) => (b.ts || 0) - (a.ts || 0));',
+    'the export in reverse scan order, moving floor and room to the last row'],
+
+  ['M136', 'log.js', '    sessionId: sessionIdForNewRecord(),\n    result: outcome,',
+    "    sessionId: '',\n    result: outcome,",
+    'an item written with no session — invisible to the log and to the export'],
+
+  ['M137', 'log.js', '    sessionId: sessionIdForNewRecord(),\n    client: cleanText(fields && fields.client, 80),',
+    "    sessionId: '',\n    client: cleanText(fields && fields.client, 80),",
+    'a location written with no session'],
+
+  ['M138', 'sessions.js', 'function sessionIdForNewRecord() {\n  return ensureOpenSession().id;',
+    'function sessionIdForNewRecord() {\n  return state.currentSessionId;',
+    'a scan landing in a session that has been closed'],
+
+  // THE BUG V7 WOULD OTHERWISE HAVE SHIPPED. Reverting the scope here restores
+  // the pre-V7 global search, which silently offers to replace another
+  // engineer's finished record in a session you are not looking at.
+  ['M139', 'log.js', "    if (r.type !== 'item' || !inCurrentSession(r)) continue;\n    if (exceptId && r.id === exceptId) continue;",
+    "    if (r.type !== 'item') continue;\n    if (exceptId && r.id === exceptId) continue;",
+    'the duplicate check reaching into another engineer\'s session'],
+
+  ['M140', 'log.js', "    if (r.type === 'location' && inCurrentSession(r) &&",
+    "    if (r.type === 'location' && (true) &&",
+    'a location reused across a session boundary'],
+
+  ['M141', 'sessions.js', '  const cur = currentSession();\n  if (cur && !cur.closedAt) return cur;',
+    '  const cur = currentSession();\n  if (cur) return cur;',
+    'the open-session invariant accepting a closed session'],
+
+  ['M142', 'storage.js', "    if (!r.sessionId || !sessionById(r.sessionId)) orphans.push(r);",
+    "    if (!r.sessionId) orphans.push(r);",
+    'a dangling sessionId left unrepaired — records invisible everywhere'],
+
+  ['M143', 'storage.js', '  if (!state.currentSessionId) state.currentSessionId = ses.id;',
+    '  state.currentSessionId = ses.id;',
+    'an adoption pass yanking the engineer out of the session they are in'],
+
+  ['M144', 'log.js', '  for (let i = 0; i < state.records.length; i++) {\n    if (!state.records[i].exported) n++;',
+    '  for (let i = 0; i < state.records.length; i++) {\n    if (!state.records[i].exported && inCurrentSession(state.records[i])) n++;',
+    'the clear guard blind to unexported work in other sessions'],
+
+  ['M145', 'sessions.js', '  state.currentLocationId = \'\';\n  saveSessions();\n  savePrefs();\n  return ses;',
+    '  saveSessions();\n  savePrefs();\n  return ses;',
+    'a stale location carried across a session switch'],
+
+  ['M146', 'sessions.js', "    if (r.type === 'item' && r.locationId && remap[r.locationId]) {",
+    "    if (false) {",
+    'a re-issued location id leaving every item that pointed at it dangling'],
+
+  ['M147', 'sessions.js', "    if (choices[c.key] === 'mine') dropIncoming[c.theirs.id] = 1;\n    else dropLocal[c.mine.id] = 1;",
+    "    if (choices[c.key] === 'mine') dropLocal[c.mine.id] = 1;\n    else dropIncoming[c.theirs.id] = 1;",
+    'the review keeping the opposite record from the one chosen'],
+
+  ['M148', 'styles.css', 'grid-template-columns: max-content 1fr;',
+    'grid-template-columns: 74px 1fr;',
+    'the toggle label column pinned back to a fixed width'],
+
+  ['M149', 'backup.js', '  if (obj.kind === SESSION_FILE_KIND) {',
+    '  if (false) {',
+    'a session file restored through the path that REPLACES the phone'],
+
+  ['M150', 'render.js', "  if (v !== 'review') state.review = null;", '',
+    'a half-answered review surviving a walk away from the screen'],
+
+  ['M151', 'sessions.js', '  if (obj.kind !== SESSION_FILE_KIND) {',
+    '  if (false) {',
+    'a full backup accepted by the session importer'],
+
+  ['M152', 'sessions.js', "    closedAt: Date.now(),\n    engineer: cleanText(meta.engineer, 60),",
+    "    closedAt: 0,\n    engineer: cleanText(meta.engineer, 60),",
+    'an imported session arriving open and catching the next scan'],
+
+  ['M153', 'backup.js', '  state.sessions = normaliseSessions(obj.sessions);',
+    '  state.sessions = [];',
+    'a restore losing every session name the engineer chose'],
+
+  ['M154', 'storage.js', "    sessionId: isNonEmptyString(r.sessionId) ? r.sessionId : '',",
+    "    sessionId: uid('ses'),",
+    'the validator inventing one session per record'],
 ];
 
 function run(cmd) {
