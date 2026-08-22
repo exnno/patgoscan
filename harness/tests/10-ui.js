@@ -190,18 +190,40 @@ module.exports = function (app) {
 
   A.group('10j the release strings all agree', () => {
     const css = L.readFile('styles.css');
-    A.eq('the app version is V6', app.val('APP_VERSION'), 'V7');
-    A.eq('the welcome rolled with it', app.val('WELCOME_VERSION'), 'V7');
-    A.eq('the cache key matches', L.cacheVersion(), 'scan-v7');
-    A.ok('About leads with V6',
-      app.fn('renderAbout')().indexOf('<b>V6</b>') !== -1);
-    // Rolling three: V6, V5, V4. ⚠ THE OLDEST MUST HAVE DROPPED OFF — asserting
-    // only that the tail is present would stay green on a changelog that had
-    // simply grown a fourth entry and never dropped anything.
-    A.ok('and still lists three, oldest V4',
-      app.fn('renderAbout')().indexOf('<b>V4</b>') !== -1);
-    A.ok('with V3 dropped off the bottom',
-      app.fn('renderAbout')().indexOf('<b>V3</b>') === -1);
+    // ⚠ THIS GROUP GOES STALE EVERY RELEASE BY DESIGN, like mutation M03. The
+    // version numbers are the assertion. Update them as part of the bump.
+    //
+    // ⚠ AND UPDATE THE LABELS, NOT JUST THE VALUES. Through V6 and V7 these
+    // read "the app version is V6" while asserting 'V7' — harmless to the run
+    // and actively misleading in a failure list, which is the one moment
+    // anybody reads them.
+    const about = app.fn('renderAbout')();
+    A.eq('the app version is V8', app.val('APP_VERSION'), 'V8');
+    A.eq('the cache key matches', L.cacheVersion(), 'scan-v8');
+    // ⚠ NOT ROLLED THIS RELEASE, AND THAT IS DELIBERATE. V8 is a layout
+    // release: it adds no capability, so there is nothing for a welcome modal
+    // to teach. The constant therefore stays behind APP_VERSION on purpose and
+    // this assertion names the version it is allowed to lag at, so that a
+    // FEATURE release which forgets to roll it still fails here.
+    A.eq('⚠ the welcome is deliberately still V7 (V8 adds no capability)',
+      app.val('WELCOME_VERSION'), 'V7');
+    A.ok('About leads with V8', about.indexOf('<b>V8</b>') !== -1);
+
+    // ⚠ COUNTED, NOT SNIFFED — AND THIS IS A REPAIR, NOT A TIDY-UP. The old
+    // form asserted "V4 is present, V3 is not" and its own comment warned that
+    // asserting only the tail "would stay green on a changelog that had simply
+    // grown a fourth entry and never dropped anything". That is precisely what
+    // then happened: V7 added an entry, dropped nothing, and this stayed green
+    // — because once V3 is gone it is gone forever and the second half of the
+    // pair can never fail again. A hollow assertion that documents its own
+    // hollowness in a comment is still hollow.
+    //
+    // The count is the property. Four entries, newest first, oldest drops off.
+    const entries = about.match(/<b>V\d+<\/b>/g) || [];
+    A.eq('⚠ the changelog holds four entries and rolls', entries.length, 4);
+    A.eq('newest first', entries[0], '<b>V8</b>');
+    A.eq('oldest is V5', entries[3], '<b>V5</b>');
+    A.ok('with V4 dropped off the bottom', about.indexOf('<b>V4</b>') === -1);
     // The amber set is kept in the stylesheet on purpose — it is the one-edit
     // route back if the two apps ever do get confused on a job.
     //
