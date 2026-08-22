@@ -39,7 +39,7 @@ const MUTATIONS = [
   // the version bump breaks the find string and the mutation reports SKIPPED.
   // Update it as part of the bump; a skip here means the cache-key invariant
   // is unguarded for that release, which is how a build ships without one.
-  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v7'", "const CACHE_VERSION = 'pat-v71'",
+  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v8'", "const CACHE_VERSION = 'pat-v71'",
     'cache key using the parent app prefix'],
   ['M04', 'utils.js', '(c) 2026 Peter Birchley. All rights reserved.', '(c) 2026',
     'copyright header stripped'],
@@ -604,6 +604,32 @@ const MUTATIONS = [
   ['M154', 'storage.js', "    sessionId: isNonEmptyString(r.sessionId) ? r.sessionId : '',",
     "    sessionId: uid('ses'),",
     'the validator inventing one session per record'],
+
+  // --- V8 layout ----------------------------------------------------------
+  // ⚠ FIVE MUTATIONS FOR A RELEASE THAT ONLY MOVED PIXELS, AND THEY ARE THE
+  // POINT OF IT. Layout regressions are the single easiest kind to ship: they
+  // never throw, they never fail a test written about behaviour, and on the
+  // phone they present as "it feels a bit long" rather than as anything a
+  // person would file. Each of these is a change somebody could plausibly make
+  // in a later release believing it to be a tidy-up.
+  ['M155', 'styles.css', '.screen { min-height: 100vh;',
+    '.screen { padding-bottom: env(safe-area-inset-bottom); min-height: 100vh;',
+    'the home indicator inset counted twice again — the V8 bug, restored'],
+  ['M156', 'render.js',
+    "      ${initial\n        ? '<span class=\"prompt-small\">Initial — you will be asked for a description</span>'\n        : ''}",
+    "      <span class=\"prompt-small\">${initial ? 'Initial — you will be asked for a description' : 'Audit — pass or fail only'}</span>",
+    'the Audit sub-line restored for symmetry (3C undone)'],
+  ['M157', 'render.js',
+    '      <div class="lastitem-acts">\n        <button type="button" class="linkbtn" data-action="editLastItem">Edit</button>\n        <button type="button" class="linkbtn is-danger" data-action="undoLastItem">Undo</button>\n      </div>\n    </div>',
+    '    </div>\n    <div class="lastitem-acts">\n      <button type="button" class="linkbtn" data-action="editLastItem">Edit</button>\n      <button type="button" class="linkbtn is-danger" data-action="undoLastItem">Undo</button>\n    </div>',
+    'Edit and Undo back on a row of their own — margin-left:auto silently doing nothing'],
+  ['M158', 'render.js',
+    "    ${bits ? `<span class=\"lastitem-sub\">${escapeHTML(bits)}</span>` : ''}",
+    '    <span class="lastitem-sub">${escapeHTML(bits)}</span>',
+    'the description line emitted unconditionally — 20px back on every audit scan'],
+  ['M159', 'styles.css', '.prompt { text-align: center; padding: 12px 8px; }',
+    '.prompt { text-align: center; padding: 26px 8px; }',
+    'the prompt padding crept back up past its ceiling'],
 ];
 
 function run(cmd) {
