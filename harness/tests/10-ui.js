@@ -198,17 +198,16 @@ module.exports = function (app) {
     // and actively misleading in a failure list, which is the one moment
     // anybody reads them.
     const about = app.fn('renderAbout')();
-    A.eq('the app version is V10', app.val('APP_VERSION'), 'V10');
-    A.eq('the cache key matches', L.cacheVersion(), 'scan-v10');
-    // ⚠ DELIBERATELY NOT ROLLED THIS RELEASE (decision 4A), so the two
-    // constants are out of step again and that is correct. V10 corrects a list
-    // that was offering the wrong rows; there is no new gesture to teach, and a
-    // full-screen panel saying "the picker is now right" reads as an apology
-    // rather than as news. V8 lagged for the same reason and V9 caught it back
-    // up. What this pair exists to catch is a FEATURE release that forgets to
-    // roll — never a correction that chose not to.
-    A.eq('the welcome version is still V9', app.val('WELCOME_VERSION'), 'V9');
-    A.ok('About leads with V10', about.indexOf('<b>V10</b>') !== -1);
+    A.eq('the app version is V11', app.val('APP_VERSION'), 'V11');
+    A.eq('the cache key matches', L.cacheVersion(), 'scan-v11');
+    // ⚠ ROLLED THIS RELEASE, AND BACK IN STEP WITH APP_VERSION. V10 deliberately
+    // did not roll (4A) because it corrected a list rather than adding anything
+    // to learn. V11 hands the engineer a gesture that did not exist — a run of
+    // items numbered up from one scanned label — and a run is the one thing in
+    // this app that writes codes nobody scanned. That has to be taught before
+    // it is met, not discovered. This pair exists to catch a FEATURE release
+    // that forgets to roll; V11 is exactly that release.
+    A.eq('the welcome version is V11', app.val('WELCOME_VERSION'), 'V11');
     // ⚠ AND THE MODAL STILL TEACHES THE VERSION IT CLAIMS. Not rolling is a
     // choice; leaving the constant on V9 while the copy describes something
     // else is a bug. The assertion is that the two agree, whichever release
@@ -245,9 +244,14 @@ module.exports = function (app) {
     // The count is the property. Four entries, newest first, oldest drops off.
     const entries = about.match(/<b>V\d+<\/b>/g) || [];
     A.eq('⚠ the changelog holds four entries and rolls', entries.length, 4);
-    A.eq('newest first', entries[0], '<b>V10</b>');
-    A.eq('oldest is V7', entries[3], '<b>V7</b>');
-    A.ok('with V6 dropped off the bottom', about.indexOf('<b>V6</b>') === -1);
+    // ⚠ "About leads with V10" USED TO SIT ABOVE THIS AND HAS BEEN REMOVED, not
+    // re-pointed. It read `about.indexOf('<b>V10</b>') !== -1` — which was true
+    // of a changelog with V10 anywhere in it, including at the BOTTOM, so it
+    // could not fail while the entry survived at all. `entries[0]` below is the
+    // assertion it was pretending to be, and it was already here.
+    A.eq('newest first', entries[0], '<b>V11</b>');
+    A.eq('oldest is V8', entries[3], '<b>V8</b>');
+    A.ok('with V7 dropped off the bottom', about.indexOf('<b>V7</b>') === -1);
     // The amber set is kept in the stylesheet on purpose — it is the one-edit
     // route back if the two apps ever do get confused on a job.
     //
