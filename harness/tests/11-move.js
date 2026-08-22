@@ -564,4 +564,131 @@ module.exports = function (app) {
     A.eq('nothing to show', app.fn('renderMoveBar')(), '');
     A.eq('and the arm went with it', app.state().moveArmed, '');
   });
+  // -------------------------------------------------------------------------
+  // V10 — the picker's cross-session hole (decisions 1B and 2A)
+  //
+  // ⚠ WHAT THESE GROUPS PROTECT IS THE CLIENT'S FILE, NOT THE SCREEN. V9 shut
+  // this door from the scanning side and left it open from the tapping side:
+  // the log lists EVERY session, so the edit sheet opens on items from batches
+  // that are not the one being worked in, and the picker was offering the
+  // current session's rooms for all of them. Tapping one filed the item under a
+  // location its own export does not contain — an item row pointing at a
+  // location row that is not in the file, which is the one property the picker
+  // has existed to guarantee since V4.
+  // -------------------------------------------------------------------------
+
+  // An item left behind in a finished session, with somewhere to move to inside
+  // it, while the engineer works in a different one. Built by the app's own
+  // writers on both sides of the switch.
+  function anItemInAnotherSession() {
+    F.resetApp(app);
+    const oldLoc = app.fn('addLocationRecord')('LOC-OLD', INITIAL,
+      { client: 'Acme Ltd', floor: 'Ground', room: 'Old Kitchen' });
+    app.fn('addItemRecord')({ code: 'A1', mode: INITIAL, description: 'Kettle', cls: '1' }, 'pass', '');
+    const oldSpare = app.fn('addLocationRecord')('LOC-SPARE', INITIAL,
+      { client: 'Acme Ltd', floor: 'Ground', room: 'Old Store' });
+    const item = app.fn('itemRecords')()[0];
+
+    const today = app.fn('createSession')('Today');
+    app.fn('switchToSession')(today.id);
+    const todayLoc = app.fn('addLocationRecord')('LOC-TODAY', INITIAL,
+      { client: 'Acme Ltd', floor: 'First', room: 'Todays Room' });
+    return { oldLoc, oldSpare, todayLoc, item, today };
+  }
+
+  A.group('11ab the picker lists the ITEM\'s session, not the one being worked in', () => {
+    const { oldSpare, todayLoc, item } = anItemInAnotherSession();
+    // ⚠ THROUGH THE EDIT SHEET'S OWN BUTTON. Calling openLocationPickerSheet()
+    // with a session id by hand would pass on a build where the call site still
+    // omits the argument — which is the whole of the bug.
+    app.fn('openEditSheet')(item.id);
+    F.openSheetEl(app).querySelector('#ed-locchange').onclick();
+    const html = F.openSheetEl(app).innerHTML;
+    A.includes('a spare room from the item\'s own session is offered', html, oldSpare.id);
+    A.excludes('⚠ and today\'s room is NOT', html, todayLoc.id);
+    A.includes('the sheet says why the list looks like that', html, 'another session');
+    app.fn('closeSheet')();
+  });
+
+  A.group('11ac and a move inside that session still commits — id AND code', () => {
+    // The silent half again, on the path V10 opened up. A correction that only
+    // half-lands here is worse than one that fails: the screen agrees with the
+    // engineer and the file does not.
+    const { oldLoc, oldSpare, item } = anItemInAnotherSession();
+    A.eq('it starts in the old kitchen', app.fn('recordById')(item.id).locationId, oldLoc.id);
+
+    app.fn('openEditSheet')(item.id);
+    F.openSheetEl(app).querySelector('#ed-locchange').onclick();
+    tapLocation(app, oldSpare.id);
+    F.openSheetEl(app).querySelector('#ed-ok').onclick();
+
+    const saved = app.fn('recordById')(item.id);
+    A.eq('the id moved', saved.locationId, oldSpare.id);
+    A.eq('and the code moved with it', saved.locationCode, 'LOC-SPARE');
+    A.eq('⚠ and it did not change session on the way', saved.sessionId, oldLoc.sessionId);
+    A.notEq('which is not the one being worked in', saved.sessionId, app.state().currentSessionId);
+  });
+
+  A.group('11ad Save & scan is not offered on an out-of-session item (2A)', () => {
+    // ⚠ AND THE SHEET MUST STILL BE WHOLE. The button is conditional now, so an
+    // unguarded .onclick assignment throws INSIDE the sheet builder — leaving a
+    // half-wired edit sheet with no Save and no Cancel, on the one screen whose
+    // job is putting data right. That is why Save is exercised here rather than
+    // merely looked for.
+    const { item } = anItemInAnotherSession();
+    app.fn('openEditSheet')(item.id);
+    const sheet = F.openSheetEl(app);
+    A.excludes('no Save & scan', sheet.innerHTML, 'ed-locscan');
+    A.includes('but Change is still there', sheet.innerHTML, 'ed-locchange');
+    A.includes('and it says why scanning is not offered', sheet.innerHTML, 'another session');
+
+    sheet.querySelector('#ed-desc').value = 'Toaster';
+    sheet.querySelector('#ed-ok').onclick();
+    A.eq('⚠ the sheet is still wired — Save works', app.fn('recordById')(item.id).description, 'Toaster');
+  });
+
+  A.group('11ae the in-session sheet is untouched by all of that', () => {
+    // The regression the two changes above could quietly cause: a condition
+    // written the wrong way round takes Save & scan away from everybody.
+    const { item } = twoLocationsAndAnItem();
+    app.fn('openEditSheet')(item.id);
+    const sheet = F.openSheetEl(app);
+    A.includes('Save & scan is present for an item in this session', sheet.innerHTML, 'ed-locscan');
+    A.excludes('and no other-session note with it', sheet.innerHTML, 'another session');
+    app.fn('closeSheet')();
+  });
+
+  A.group('11af an item whose session holds no locations says so honestly', () => {
+    // ⚠ "SCAN ONE AND COME BACK" IS ACTIVELY WRONG ADVICE HERE. A location
+    // scanned now joins TODAY's session, which is the list this item is not
+    // offered — the engineer would scan a label, return, and find nothing had
+    // changed, with no explanation anywhere.
+    F.resetApp(app);
+    app.fn('addItemRecord')({ code: 'A1', mode: AUDIT }, 'pass', '');
+    const item = app.fn('itemRecords')()[0];
+    const today = app.fn('createSession')('Today');
+    app.fn('switchToSession')(today.id);
+    app.fn('addLocationRecord')('LOC-TODAY', AUDIT, null);
+
+    app.fn('openEditSheet')(item.id);
+    F.openSheetEl(app).querySelector('#ed-locchange').onclick();
+    const html = F.openSheetEl(app).innerHTML;
+    A.excludes('nothing to pick', html, 'locpick');
+    A.excludes('⚠ and it does not send them off to scan a label', html, 'Scan a location barcode first');
+    A.includes('it says there is nowhere to move it to', html, 'nowhere to move it to');
+    app.fn('closeSheet')();
+  });
+
+  A.group('11ag locationChoices with no session named is unchanged', () => {
+    // Back-compat, and the reason the argument is optional: every other caller
+    // and every earlier assertion in this file goes through the default.
+    const { kitchen, corridor } = twoLocationsAndAnItem();
+    const rows = app.fn('locationChoices')(3);
+    const ids = rows.map(r => r.rec.id);
+    A.eq('both of this session\'s locations', rows.length, 2);
+    A.ok('the kitchen is there', ids.indexOf(kitchen.id) !== -1);
+    A.ok('and the corridor', ids.indexOf(corridor.id) !== -1);
+    A.eq('and asking for this session by name gives the same list',
+      app.fn('locationChoices')(3, app.state().currentSessionId).length, 2);
+  });
 };

@@ -728,6 +728,25 @@ module.exports = function (app) {
   // The toggle row fix
   // ---------------------------------------------------------------------------
 
+  A.group('14m ⚠ A SESSION FILE IS NOT A BACKUP, AND THE SCREEN SAYS SO', () => {
+    // V10, decision 3A. This warning existed once, in V7's welcome modal, and
+    // V9 wrote over it — a modal is a place a rule goes to be forgotten, since
+    // the copy is replaced wholesale by whichever release rolls it next. The
+    // app has always enforced the distinction; nothing anywhere said it in
+    // words after V9, and the engineer who shares a session at the end of a job
+    // and then wipes the phone is the one who finds that out.
+    //
+    // ⚠ ASSERTED ON THE SHARE SIDE. The import side has said "this is not the
+    // same as restoring a backup" since V7 and is untouched — the direction
+    // that loses work is the OUTBOUND one, and it was the unguarded one.
+    F.resetApp(app);
+    const html = app.fn('renderSessions')();
+    A.includes('the sessions screen carries the warning', html, 'not a backup');
+    A.includes('and names the thing that actually is one', html, 'Export and backup');
+    A.includes('the import side still says its own version too',
+      html, 'not the same as restoring a backup');
+  });
+
   A.group('14n ⚠ THE TWO TOGGLE ROWS SHARE ONE GRID', () => {
     // The rows used to be independent flex containers with the label column
     // pinned at 74px. "INSPECTION" is wider than that at 13px uppercase, and a

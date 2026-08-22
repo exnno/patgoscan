@@ -198,23 +198,24 @@ module.exports = function (app) {
     // and actively misleading in a failure list, which is the one moment
     // anybody reads them.
     const about = app.fn('renderAbout')();
-    A.eq('the app version is V9', app.val('APP_VERSION'), 'V9');
-    A.eq('the cache key matches', L.cacheVersion(), 'scan-v9');
-    // ⚠ ROLLED THIS RELEASE, unlike V8. V9 adds a capability — a gesture that
-    // does not exist anywhere else in the app and that nobody will discover by
-    // looking at the screen — so the modal has something to teach and the two
-    // constants are back in step. V8's note is kept below because the lag it
-    // describes is legitimate and will happen again on the next pure layout or
-    // refactor release: what this assertion exists to catch is a FEATURE
-    // release that forgets to roll it.
-    A.eq('the welcome version is V9', app.val('WELCOME_VERSION'), 'V9');
-    A.ok('About leads with V9', about.indexOf('<b>V9</b>') !== -1);
-    // ⚠ AND THE MODAL ACTUALLY TEACHES THIS RELEASE. Rolling the constant
-    // without writing the copy shows every engineer a full-screen panel about
-    // the last version — which is worse than not rolling it, because it reads
-    // as the app being wrong rather than as nothing having happened.
+    A.eq('the app version is V10', app.val('APP_VERSION'), 'V10');
+    A.eq('the cache key matches', L.cacheVersion(), 'scan-v10');
+    // ⚠ DELIBERATELY NOT ROLLED THIS RELEASE (decision 4A), so the two
+    // constants are out of step again and that is correct. V10 corrects a list
+    // that was offering the wrong rows; there is no new gesture to teach, and a
+    // full-screen panel saying "the picker is now right" reads as an apology
+    // rather than as news. V8 lagged for the same reason and V9 caught it back
+    // up. What this pair exists to catch is a FEATURE release that forgets to
+    // roll — never a correction that chose not to.
+    A.eq('the welcome version is still V9', app.val('WELCOME_VERSION'), 'V9');
+    A.ok('About leads with V10', about.indexOf('<b>V10</b>') !== -1);
+    // ⚠ AND THE MODAL STILL TEACHES THE VERSION IT CLAIMS. Not rolling is a
+    // choice; leaving the constant on V9 while the copy describes something
+    // else is a bug. The assertion is that the two agree, whichever release
+    // they are sat on.
     const welcome = app.fn('renderWelcome')();
-    A.ok('the welcome modal is about V9', welcome.indexOf('New in V9') !== -1);
+    A.ok('the welcome modal matches WELCOME_VERSION',
+      welcome.indexOf('New in ' + app.val('WELCOME_VERSION')) !== -1);
 
     // ⚠ V9 — THE README IS THE FOURTH PLACE A VERSION NUMBER LIVES, so it is
     // asserted rather than trusted. A repo front page saying V8 while the app
@@ -244,9 +245,9 @@ module.exports = function (app) {
     // The count is the property. Four entries, newest first, oldest drops off.
     const entries = about.match(/<b>V\d+<\/b>/g) || [];
     A.eq('⚠ the changelog holds four entries and rolls', entries.length, 4);
-    A.eq('newest first', entries[0], '<b>V9</b>');
-    A.eq('oldest is V6', entries[3], '<b>V6</b>');
-    A.ok('with V5 dropped off the bottom', about.indexOf('<b>V5</b>') === -1);
+    A.eq('newest first', entries[0], '<b>V10</b>');
+    A.eq('oldest is V7', entries[3], '<b>V7</b>');
+    A.ok('with V6 dropped off the bottom', about.indexOf('<b>V6</b>') === -1);
     // The amber set is kept in the stylesheet on purpose — it is the one-edit
     // route back if the two apps ever do get confused on a job.
     //
