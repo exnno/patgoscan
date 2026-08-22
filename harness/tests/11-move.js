@@ -89,7 +89,7 @@ module.exports = function (app) {
     // pass 11b and ship the wrong file.
     const { corridor, item } = twoLocationsAndAnItem();
     app.fn('updateRecordFields')(item.id, { locationId: corridor.id });
-    const csv = app.fn('buildCSV')(false).text;
+    const csv = app.fn('buildCSV')().text;
     // ⚠ EVERY CELL IS QUOTED (csvCell). A filter for `item,` matches nothing and
     // leaves an empty string that fails the assertion for a reason that has
     // nothing to do with the move — this cost a few minutes on the first run.

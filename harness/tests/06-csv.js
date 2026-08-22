@@ -29,7 +29,7 @@ module.exports = function (app) {
 
   A.group('06a the header is the client spec, in order', () => {
     F.resetApp(app);
-    const r = rows(build(false).text);
+    const r = rows(build().text);
     A.eq('header matches CSV_COLUMNS exactly', cells(r[0]), COLS);
     // Order-independent: these columns must EXIST and be unique. Where they sit
     // is the client's business and may change without this file changing.
@@ -60,7 +60,7 @@ module.exports = function (app) {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
     app.fn('addItemRecord')({ code: 'A1', mode: AUDIT }, 'fail', 'Damaged Lead, replaced on site');
-    const r = rows(build(false).text);
+    const r = rows(build().text);
     A.ok('the comma did not split the row', cells(r[1]).length === COLS.length);
     A.eq('reason intact in NOTES', at(cells(r[1]), 'NOTES'), 'Damaged Lead, replaced on site');
   });
@@ -72,7 +72,7 @@ module.exports = function (app) {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
     app.fn('addItemRecord')({ code: 'A1', mode: INITIAL, description: 'Monitor 24"' }, 'pass', '');
-    const r = rows(build(false).text);
+    const r = rows(build().text);
     A.eq('quote survives', at(cells(r[1]), 'DESCRIPTION'), 'Monitor 24"');
   });
 
@@ -90,7 +90,7 @@ module.exports = function (app) {
     // run. That made this group pass or fail by coin-toss under mutation —
     // flakiness, which is worse than a plain failure because it hides.
     st.records.forEach((rec, i) => { rec.ts = 1700000000000 + i * 1000; });
-    const r = rows(build(false).text);
+    const r = rows(build().text);
     A.eq('two item rows and a header', r.length, 3);
     A.eq('A1 first', at(cells(r[1]), 'ASSET ID'), 'A1');
     A.eq('then A2', at(cells(r[2]), 'ASSET ID'), 'A2');
@@ -101,7 +101,7 @@ module.exports = function (app) {
     app.fn('addLocationRecord')('LOC-9', AUDIT, null);
     st.engineer = 'Pete';
     app.fn('addItemRecord')({ code: 'A1', mode: AUDIT, description: 'Kettle' }, 'pass', '');
-    const c = cells(rows(build(false).text)[1]);
+    const c = cells(rows(build().text)[1]);
     A.eq('asset', at(c, 'ASSET ID'), 'A1');
     A.eq('visual outcome', at(c, 'VISUAL'), 'PASS');
     A.eq('operational outcome', at(c, 'OPERATIONAL'), 'PASS');
@@ -121,7 +121,7 @@ module.exports = function (app) {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-9', AUDIT, null);
     app.fn('addItemRecord')({ code: 'A2', mode: INITIAL, description: 'Kettle', cls: '2' }, 'pass', '');
-    const c = cells(rows(build(false).text)[1]);
+    const c = cells(rows(build().text)[1]);
     A.eq('description', at(c, 'DESCRIPTION'), 'Kettle');
     A.eq('class as the client writes it', at(c, 'CLASS'), '2');
     A.eq('asset id in its own column and nowhere else', at(c, 'ASSET ID'), 'A2');
@@ -135,7 +135,7 @@ module.exports = function (app) {
     // which 13-columns proves.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-3', INITIAL, { client: 'Acme', floor: '2', room: 'Kitchen' });
-    const built = build(false);
+    const built = build();
     A.eq('nothing to export from a location alone', built.count, 0);
     A.eq('header only', rows(built.text).length, 1);
     // ⚠ AND THE LOCATION IS STILL IN THE LOG. Emitting no row is not the same
@@ -144,7 +144,14 @@ module.exports = function (app) {
     A.eq('the location record exists', st.records.length, 1);
   });
 
-  A.group('06h "new only" excludes what has already gone out', () => {
+  A.group('06h ⚠ V7 — EXPORT DOES NOT EXCLUDE WHAT HAS ALREADY GONE OUT (3B)', () => {
+    // ⚠ THIS GROUP ASSERTED THE OPPOSITE UNTIL V7 AND THE REVERSAL IS THE
+    // DECISION, not a regression. Export used to send unexported records only,
+    // which made a re-export a handful of loose corrections; it now sends the
+    // whole of the current session every time, so the client receives a
+    // complete batch they can drop straight in. Their importer treats a
+    // repeated asset id as an update, so a row that has not changed costs
+    // nothing and a row that has is the entire point.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', AUDIT, null);
     app.fn('addItemRecord')({ code: 'A1', mode: AUDIT }, 'pass', '');
@@ -153,8 +160,8 @@ module.exports = function (app) {
     // ⚠ V6: `count` IS ITEM ROWS, NOT RECORDS. A location contributes nothing
     // to the file, so counting it would make the toast promise the client a row
     // that is not in there.
-    A.eq('only the new one', build(true).count, 1);
-    A.eq('both items for a full export, the location counting for nothing', build(false).count, 2);
+    A.eq('⚠ the exported one comes out again', build().count, 2);
+    A.eq('the location still counts for nothing', build().records.length, 3);
   });
 
   A.group('06i marking exported does not delete anything', () => {

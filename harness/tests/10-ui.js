@@ -190,9 +190,9 @@ module.exports = function (app) {
 
   A.group('10j the release strings all agree', () => {
     const css = L.readFile('styles.css');
-    A.eq('the app version is V6', app.val('APP_VERSION'), 'V6');
-    A.eq('the welcome rolled with it', app.val('WELCOME_VERSION'), 'V6');
-    A.eq('the cache key matches', L.cacheVersion(), 'scan-v6');
+    A.eq('the app version is V6', app.val('APP_VERSION'), 'V7');
+    A.eq('the welcome rolled with it', app.val('WELCOME_VERSION'), 'V7');
+    A.eq('the cache key matches', L.cacheVersion(), 'scan-v7');
     A.ok('About leads with V6',
       app.fn('renderAbout')().indexOf('<b>V6</b>') !== -1);
     // Rolling three: V6, V5, V4. ⚠ THE OLDEST MUST HAVE DROPPED OFF — asserting

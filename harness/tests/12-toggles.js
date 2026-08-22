@@ -39,7 +39,7 @@ module.exports = function (app) {
   function rows(text) { return text.split('\r\n'); }
   function cells(row) { return row.slice(1, -1).split('","').map(s => s.replace(/""/g, '"')); }
   function at(cellArr, key) { return cellArr[COLS.indexOf(key)]; }
-  function exportCells(n) { return cells(rows(app.fn('buildCSV')(false).text)[n]); }
+  function exportCells(n) { return cells(rows(app.fn('buildCSV')().text)[n]); }
 
   // -------------------------------------------------------------------------
   // The column spec itself
@@ -102,7 +102,7 @@ module.exports = function (app) {
     const original = victim.cell;
     victim.cell = () => { throw new Error('boom'); };
     let built = null;
-    try { built = app.fn('buildCSV')(false); } catch (e) { built = null; }
+    try { built = app.fn('buildCSV')(); } catch (e) { built = null; }
     victim.cell = original;
     A.ok('the file was still produced', built !== null);
     A.eq('with every row present', built.count, 1);
@@ -116,7 +116,7 @@ module.exports = function (app) {
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', INITIAL, { client: 'Acme', floor: '1', room: 'Kitchen' });
     app.fn('addItemRecord')({ code: 'A1', mode: INITIAL, description: 'Kettle', cls: '1' }, 'pass', '');
-    const r = rows(app.fn('buildCSV')(false).text);
+    const r = rows(app.fn('buildCSV')().text);
     // ⚠ V6: TWO, NOT THREE. The location contributes no row of its own — its
     // floor and room ride on the item below it instead (decision 8A).
     A.eq('a header and one item row', r.length, 2);
@@ -626,7 +626,7 @@ module.exports = function (app) {
 
     const original = SPEC.slice();
     SPEC.reverse();
-    const r = rows(app.fn('buildCSV')(false).text);
+    const r = rows(app.fn('buildCSV')().text);
     const keys = SPEC.map(c => c.key);
     const pick = (line, k) => cells(line)[keys.indexOf(k)];
 

@@ -38,8 +38,12 @@ module.exports = function (app) {
   function rows(text) { return text.split('\r\n'); }
   function cells(row) { return row.slice(1, -1).split('","').map(s => s.replace(/""/g, '"')); }
   function at(cellArr, key) { return cellArr[COLS.indexOf(key)]; }
-  function build(onlyNew) { return app.fn('buildCSV')(onlyNew); }
-  function exportRow(n, onlyNew) { return cells(rows(build(onlyNew === true).text)[n]); }
+  // ⚠ V7: buildCSV() TAKES NO ARGUMENT. Export is the whole current session
+  // every time (decision 3B). The old `onlyNew` flag is gone rather than
+  // defaulted, so a stale call site fails loudly here instead of quietly
+  // exporting something different from what it asked for.
+  function build() { return app.fn('buildCSV')(); }
+  function exportRow(n) { return cells(rows(build().text)[n]); }
 
   // Spaced timestamps. ⚠ Records created inside one millisecond all carry the
   // same ts, and any comparator that ties on ts falls through to a random id
@@ -55,7 +59,7 @@ module.exports = function (app) {
 
   A.group('13a the header is the client\'s twelve, plus engineer', () => {
     F.resetApp(app);
-    const r = rows(build(false).text);
+    const r = rows(build().text);
     A.eq('header matches CSV_COLUMNS exactly', cells(r[0]), COLS);
     // ⚠ THE CLIENT'S TWELVE COME FIRST, IN THEIR ORDER. Engineer is APPENDED
     // (decision 12B) precisely so their layout is untouched — inserting it
@@ -220,58 +224,75 @@ module.exports = function (app) {
   // Floor and room — the part that is only testable across two exports
   // -------------------------------------------------------------------------
 
-  A.group('13f ⚠ THE MONDAY/TUESDAY CASE — descriptors in EVERY file', () => {
-    // THE GROUP THIS RELEASE TURNS ON. Decision 7A puts floor and room on the
-    // first item row of a newly initialised location, and the naive reading of
-    // "first" is "first ever". That reading is broken, because export sends
-    // UNEXPORTED RECORDS ONLY: a location initialised Monday and added to on
-    // Tuesday would put its descriptors in Monday's file and leave Tuesday's
-    // with no location detail anywhere in it.
+  A.group('13f ⚠ THE SECOND EXPORT — descriptors in EVERY file', () => {
+    // THE GROUP THAT KEEPS DECISION 7A HONEST, retargeted in V7.
     //
-    // ⚠ A SINGLE EXPORT CANNOT TELL THE TWO READINGS APART. Every other
-    // floor/room group here would stay green on the broken version.
+    // 7A puts floor and room on the first item row of a newly initialised
+    // location IN THIS FILE, and the whole of its correctness is those last
+    // four words. Until V7 the case that proved it was Monday/Tuesday, because
+    // export sent unexported records only. V7 sends the WHOLE SESSION every
+    // time (3B), so that particular split no longer happens — but the property
+    // still has a way to break, and it is this one: EXPORT THE SAME SESSION
+    // TWICE. If the "already described" flag is parked on the record or on the
+    // function instead of being rebuilt per file, the second file comes out
+    // with no floor or room anywhere in it.
+    //
+    // ⚠ THIS IS STILL THE ONLY GROUP THAT CAN SEE THE DIFFERENCE. Every other
+    // floor/room assertion stays green on the broken version, because a single
+    // export cannot tell the two readings apart. Mutation M119.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-9', INITIAL, { client: 'Acme', floor: 'Ground', room: 'Kitchen' });
     app.fn('addItemRecord')({ code: 'A1', mode: AUDIT }, 'pass', '');
     app.fn('addItemRecord')({ code: 'A2', mode: AUDIT }, 'pass', '');
     space();
 
-    const monday = build(true);
-    A.eq('Monday has two rows', monday.count, 2);
-    A.eq('Monday\'s first row carries the floor', at(cells(rows(monday.text)[1]), 'FLOOR'), 'Ground');
-    A.eq('and the room', at(cells(rows(monday.text)[1]), 'ROOM'), 'Kitchen');
-    A.eq('Monday\'s second row does not repeat them', at(cells(rows(monday.text)[2]), 'FLOOR'), '');
-    app.fn('markExported')(monday.records);
+    const first = build();
+    A.eq('two rows go out', first.count, 2);
+    A.eq('the first row carries the floor', at(cells(rows(first.text)[1]), 'FLOOR'), 'Ground');
+    A.eq('and the room', at(cells(rows(first.text)[1]), 'ROOM'), 'Kitchen');
+    A.eq('the second row does not repeat them', at(cells(rows(first.text)[2]), 'FLOOR'), '');
+    app.fn('markExported')(first.records);
 
-    // Tuesday: same location, more items, nothing else changed.
+    // Sent, then sent again with nothing changed at all.
+    const again = build();
+    A.eq('⚠ the whole session goes out AGAIN (3B)', again.count, 2);
+    A.eq('⚠ and it STILL carries the floor', at(cells(rows(again.text)[1]), 'FLOOR'), 'Ground');
+    A.eq('⚠ and the room', at(cells(rows(again.text)[1]), 'ROOM'), 'Kitchen');
+    A.eq('still only on its first row', at(cells(rows(again.text)[2]), 'FLOOR'), '');
+
+    // More work in the same session, sent a third time.
     app.fn('addItemRecord')({ code: 'A3', mode: AUDIT }, 'pass', '');
-    app.fn('addItemRecord')({ code: 'A4', mode: AUDIT }, 'pass', '');
     space();
-    const tuesday = build(true);
-    A.eq('Tuesday has two rows', tuesday.count, 2);
-    A.eq('⚠ Tuesday carries the floor TOO', at(cells(rows(tuesday.text)[1]), 'FLOOR'), 'Ground');
-    A.eq('⚠ and the room', at(cells(rows(tuesday.text)[1]), 'ROOM'), 'Kitchen');
-    A.eq('and still only on its first row', at(cells(rows(tuesday.text)[2]), 'FLOOR'), '');
-    A.eq('the right asset leads Tuesday', at(cells(rows(tuesday.text)[1]), 'ASSET ID'), 'A3');
+    const third = build();
+    A.eq('⚠ the file grows — it is the session, not the difference', third.count, 3);
+    A.eq('the earliest asset still leads', at(cells(rows(third.text)[1]), 'ASSET ID'), 'A1');
+    A.eq('and it is the row that describes the location', at(cells(rows(third.text)[1]), 'ROOM'), 'Kitchen');
   });
 
-  A.group('13f2 a re-exported correction carries its own floor and room', () => {
-    // An edit un-exports its record, so a single corrected row goes out alone
-    // in a later file. It is the first of its location IN THAT FILE and must
-    // therefore describe itself.
+  A.group('13f2 ⚠ A CORRECTION GOES OUT IN CONTEXT, NOT ALONE (3B)', () => {
+    // Before V7 an edit un-exported its record and a single corrected row went
+    // out by itself in the next file — which is what made the per-file Set
+    // necessary in the first place. Under 3B the corrected row travels with the
+    // whole session around it, which is the point of the decision: the client
+    // receives a complete, self-consistent batch rather than a loose amendment
+    // they have to reconcile against something sent that morning.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-9', INITIAL, { client: 'Acme', floor: 'Ground', room: 'Kitchen' });
     app.fn('addItemRecord')({ code: 'A1', mode: AUDIT }, 'pass', '');
-    const rec = app.fn('addItemRecord')({ code: 'A2', mode: AUDIT }, 'pass', '');
+    // ⚠ INITIAL, NOT AUDIT. Decision 9A exports DESCRIPTION on initial rows
+    // only, so asserting a description on an audit row would be a test that
+    // could not pass on any build — the hollow-assertion trap in reverse.
+    const rec = app.fn('addItemRecord')({ code: 'A2', mode: INITIAL }, 'pass', '');
     space();
-    app.fn('markExported')(build(true).records);
-    A.eq('nothing outstanding', build(true).count, 0);
+    app.fn('markExported')(build().records);
+    A.eq('⚠ exporting does NOT empty the session', build().count, 2);
 
     app.fn('updateRecordFields')(rec.id, { description: 'Kettle', result: 'pass' });
-    const later = build(true);
-    A.eq('one row goes out', later.count, 1);
-    A.eq('it is the corrected one', at(cells(rows(later.text)[1]), 'ASSET ID'), 'A2');
-    A.eq('⚠ and it describes its own location', at(cells(rows(later.text)[1]), 'ROOM'), 'Kitchen');
+    const later = build();
+    A.eq('⚠ both rows go out, not just the corrected one', later.count, 2);
+    A.eq('the corrected row is present', at(cells(rows(later.text)[2]), 'ASSET ID'), 'A2');
+    A.eq('carrying the correction', at(cells(rows(later.text)[2]), 'DESCRIPTION'), 'Kettle');
+    A.eq('⚠ and the file still describes its location', at(cells(rows(later.text)[1]), 'ROOM'), 'Kitchen');
   });
 
   A.group('13g an AUDITED location contributes no floor or room', () => {
@@ -302,7 +323,7 @@ module.exports = function (app) {
     app.fn('addLocationRecord')('LOC-B', INITIAL, { floor: '2', room: 'Office' });
     app.fn('addItemRecord')({ code: 'B1', mode: AUDIT }, 'pass', '');
     space();
-    const r = rows(build(false).text);
+    const r = rows(build().text);
     A.eq('A1 leads the kitchen', at(cells(r[1]), 'ROOM'), 'Kitchen');
     A.eq('A2 stays quiet', at(cells(r[2]), 'ROOM'), '');
     A.eq('B1 leads the office', at(cells(r[3]), 'ROOM'), 'Office');
@@ -320,7 +341,7 @@ module.exports = function (app) {
     app.fn('addLocationRecord')('LOC-1', INITIAL, { floor: '1', room: 'Kitchen' });
     app.fn('addItemRecord')({ code: 'A1', mode: AUDIT }, 'pass', '');
     space();
-    const built = build(true);
+    const built = build();
     A.eq('one row in the file', built.count, 1);
     A.eq('two records to mark', built.records.length, 2);
     app.fn('markExported')(built.records);
@@ -336,7 +357,7 @@ module.exports = function (app) {
     // stamped.
     F.resetApp(app);
     app.fn('addLocationRecord')('LOC-1', INITIAL, { floor: '1', room: 'Kitchen' });
-    A.eq('no rows', build(true).count, 0);
+    A.eq('no rows', build().count, 0);
     A.eq('and it is still outstanding', app.fn('unexportedCount')(), 1);
   });
 
@@ -445,7 +466,7 @@ module.exports = function (app) {
     // each one to a default — which looks like a successful restore and is a
     // silent partial data loss.
     F.resetApp(app);
-    A.eq('backupVersion moved to 2', app.val('BACKUP_VERSION'), 2);
+    A.eq('backupVersion moved to 3', app.val('BACKUP_VERSION'), 3);
     const ok = app.fn('restoreBackupObject')({
       app: 'patgoscan', backupVersion: 99, records: [],
     });
