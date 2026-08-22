@@ -126,6 +126,13 @@ function resetApp(app) {
   st.currentLocationId = '';
   st.pending = null;
   st.locationArmed = false;
+  // V9. ⚠ AND THE MOVE ARM, by the same argument as the toggles and the
+  // sessions below — but with a nastier failure than either. A group that left
+  // an item armed would change what the NEXT group's burst on the log screen
+  // MEANS: its barcode would be read as a destination and consumed, so a search
+  // assertion would fail complaining that the scanner collected nothing, and
+  // the record it silently moved belongs to a group that never mentioned moves.
+  st.moveArmed = '';
   st.mode = app.val('MODE_AUDIT');
   // V5. ⚠ HARNESS DEFECT FOUND DURING THIS RELEASE, and it is the classic
   // shape: these two are STICKY BY DESIGN, so without resetting them here the

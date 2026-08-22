@@ -39,7 +39,7 @@ const MUTATIONS = [
   // the version bump breaks the find string and the mutation reports SKIPPED.
   // Update it as part of the bump; a skip here means the cache-key invariant
   // is unguarded for that release, which is how a build ships without one.
-  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v8'", "const CACHE_VERSION = 'pat-v71'",
+  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v9'", "const CACHE_VERSION = 'pat-v71'",
     'cache key using the parent app prefix'],
   ['M04', 'utils.js', '(c) 2026 Peter Birchley. All rights reserved.', '(c) 2026',
     'copyright header stripped'],
@@ -630,6 +630,51 @@ const MUTATIONS = [
   ['M159', 'styles.css', '.prompt { text-align: center; padding: 12px 8px; }',
     '.prompt { text-align: center; padding: 26px 8px; }',
     'the prompt padding crept back up past its ceiling'],
+
+  // --- V9: scan-to-move --------------------------------------------------
+  //
+  // ⚠ SIX OF THESE EIGHT BREAK THE ARM RATHER THAN THE MOVE, and that is the
+  // shape of this release. "The item did not move" is a loud failure the
+  // engineer sees immediately. An arm that outlives its scan, survives a walk
+  // to another screen, or never disarms after refusing is silent — the log
+  // screen consumed barcodes before V9 too, so nothing looks wrong until the
+  // NEXT barcode is quietly read as a destination.
+  ['M160', 'dispatch.js',
+    "    const id = state.moveArmed;\n    state.moveArmed = '';",
+    "    const id = state.moveArmed;",
+    'the arm left set after its scan — every later barcode a destination'],
+  // ⚠ THIS ONE SURVIVED ON ITS FIRST RUN AND THE MUTATION WAS THE FAULT, not
+  // the test. It inserted `if (false) state.moveArmed = '';` above the comment
+  // block and left the real assignment sitting below it — dead code added to a
+  // working function, which breaks nothing and proves nothing. A mutation must
+  // REMOVE OR CHANGE the line that carries the invariant. Anchoring on the
+  // statement plus its neighbour is what makes that unambiguous here, because
+  // the same assignment appears twice in this file.
+  ['M161', 'render.js', "  state.moveArmed = '';\n  closeSheet();",
+    '  closeSheet();',
+    'an arm surviving navigation, armed invisibly on another screen'],
+  ['M162', 'scanner.js', "    kind = state.moveArmed ? 'move' : 'search';",
+    "    kind = 'search';",
+    'the log screen never routing to the move grammar — the scan becomes a search'],
+  ['M163', 'render.js',
+    "    sheet.querySelector('#ed-locscan').onclick = () => {\n      if (!saveAll()) return;\n      armMove(id);",
+    "    sheet.querySelector('#ed-locscan').onclick = () => {\n      armMove(id);",
+    'arming without saving first (3A undone) — the draft lost silently'],
+  ['M164', 'dispatch.js', '  const loc = findLocationByCode(code);',
+    '  const loc = findLocationByCode(code) || addLocationRecord(code, MODE_AUDIT, null);',
+    'an unknown destination created rather than refused (4A turned into 4C)'],
+  ['M165', 'dispatch.js', '  if (!inCurrentSession(rec)) {',
+    '  if (false) {',
+    'an item moved across sessions, into a location its own export lacks'],
+  ['M166', 'render.js', '  <div class="movebar" data-action="cancelMove">',
+    '  <div class="movebar">',
+    'the armed banner with no way out of it'],
+  ['M167', 'dispatch.js',
+    "function armMove(id) {\n  setView('log');\n  state.moveArmed = id;",
+    "function armMove(id) {\n  state.moveArmed = id;\n  setView('log');",
+    'armMove ordering reversed — setView clears the arm it just set'],
+  ['M168', 'README.md', 'cache `scan-v9`', 'cache `scan-v8`',
+    'the README front page left on the previous release'],
 ];
 
 function run(cmd) {
