@@ -1,4 +1,4 @@
-# PATGo Scan — Code Map (V9)
+# PATGo Scan — Code Map (V10)
 
 Routing only: which concern lives in which file, and the cross-file couplings
 you cannot discover by reading one file. Read this to decide *what to open*.
@@ -114,6 +114,11 @@ Stub layer, load-order runner, fixtures, standing assertions, mutation runner.
 NOT in `index.html`, NOT in `sw.js` ASSETS — test 01e fails if either changes.
 **Touch to:** validate a release, or add this release's assertions and mutations.
 Never delete from `tests/`. See `harness/README.md`.
+⚠ **V10: `stubs.js` `querySelector('#id')` RETURNS null** when the node's
+innerHTML has been set and does not contain that id — the browser's behaviour.
+It used to manufacture the element for any selector, which meant a missing
+conditional button could never crash the suite the way it crashes a phone.
+M174 survived its first run because of it. Everything else stays permissive.
 ⚠ V3: `stubs.js` `appendChild`/`removeChild` register by `id`, so
 `getElementById` sees nodes the app appended. Before that, `sheetIsOpen()` read
 false with a sheet open, `_closeSheet()` removed nothing, and the sheet tests
@@ -205,6 +210,13 @@ item-location labels, and (V4) `locationChoices()` for the move picker.
 **Coupling:** rules 5, 11, 12. ⚠ An audit re-scan of a known location REUSES it
 rather than duplicating; an initial over a known location FILLS IT IN. Both are
 deliberate — the client's export must not carry two rows for one kitchen.
+⚠ **V10 — `locationChoices(max, sessionId)` TAKES THE SESSION IT IS ASKED FOR,
+defaulting to the current one.** Hard-wiring it to the current session was only
+ever right by accident: the log lists EVERY session, so the picker opens on
+items from other batches, and offering today's rooms for one of them files it
+under a location its own export does not contain. Same hole V9 closed from the
+scanning side. Callers pass the RECORD's `sessionId`. Harness 11ab–11ag,
+mutations M169/M170/M172.
 ⚠ `replaceItemRecord()` keeps the original id and ts: a correction is one event,
 not a second one. ⚠ V4 — A MOVE DOES NOT RE-STAMP EITHER, for the same reason.
 The moved row therefore keeps its place in the timestamp-ordered export and can
@@ -374,10 +386,16 @@ a SECOND round trip (the location picker) and the two compose: pick a location,
 then tap FAIL, and the draft goes out through another sheet still holding both.
 Either round trip dropping what the other put in saves the item in the location
 it started in with nobody the wiser. Harness 11f/11h, mutations M81/M83.
-⚠ `openLocationPickerSheet()` can only ever offer locations that EXIST — that is
-the answer to "what about a location not yet scanned", not an incidental limit,
-and it is why the export can never carry an item pointing at a location row that
-is not in the file. No scanning from inside it: the scanner refuses to collect
+⚠ `openLocationPickerSheet(currentId, onPick, onCancel, sessionId)` can only ever
+offer locations that EXIST — that is the answer to "what about a location not yet
+scanned", not an incidental limit, and it is why the export can never carry an
+item pointing at a location row that is not in the file.
+⚠ **V10 — THE FOURTH ARGUMENT IS NOT OPTIONAL AT THE CALL SITE.** It is the
+record's own session, and without it the sheet offers the wrong batch's rooms.
+The edit sheet also DROPS "Save & scan" for an out-of-session item (2A) — the
+wiring for it is therefore guarded, because an unguarded `querySelector(...)
+.onclick` on a button that was not rendered throws inside the builder and leaves
+a half-wired sheet with no Save and no Cancel. Mutations M171/M173/M174. No scanning from inside it: the scanner refuses to collect
 while a sheet is open (rule 3's neighbour, M24/M78), so scan-to-move needs a new
 armed mode in the dispatch grammar and is backlogged, not smuggled in. `openFailSheet(onPick, onCancel)` — a caller with its own form MUST pass
 `onCancel` or backing out loses that form. ⚠ No sheet here may call `.focus()`

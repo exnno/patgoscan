@@ -149,20 +149,34 @@ function itemRecords() {
 //
 // One pass over the records, not one pass per location — this runs while a
 // sheet is open on a phone that may hold a long day's work.
-function locationChoices(sampleMax) {
+//
+// ⚠ V10 — THE SESSION IS AN ARGUMENT NOW, AND THAT IS THE WHOLE FIX. Until V10
+// this was hard-wired to the CURRENT session, which was only ever right by
+// accident: the log lists EVERY session, so the edit sheet — and therefore this
+// picker — opens on items belonging to batches that are not the one being
+// scanned into. Offering today's locations for yesterday's item files it under
+// a location its own export file does not contain, which is the same hole V9
+// closed from the scanning side and left open from the tapping side.
+//
+// Scoping to the RECORD'S session rather than refusing outright is the choice
+// taken (1B): an item can still be put right, and every row on offer is one
+// that will actually be in the file that item ships in. Called with nothing,
+// the behaviour is exactly what it always was.
+function locationChoices(sampleMax, sessionId) {
   const max = clampInt(sampleMax, 1, 6, 3);
+  const want = isNonEmptyString(sessionId) ? sessionId : state.currentSessionId;
   const locs = [];
   const byId = {};
   for (let i = 0; i < state.records.length; i++) {
     const r = state.records[i];
-    if (r.type !== 'location' || !inCurrentSession(r)) continue;
+    if (r.type !== 'location' || r.sessionId !== want) continue;
     const row = { rec: r, count: 0, samples: [] };
     byId[r.id] = row;
     locs.push(row);
   }
   // Newest item first, so `samples` holds the most recently tested things —
   // what the engineer did last in that room is what they remember about it.
-  const items = state.records.filter(r => r.type === 'item' && inCurrentSession(r)).sort(byNewest);
+  const items = state.records.filter(r => r.type === 'item' && r.sessionId === want).sort(byNewest);
   for (let i = 0; i < items.length; i++) {
     const row = byId[items[i].locationId];
     if (!row) continue;

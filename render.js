@@ -726,6 +726,7 @@ function renderSessions() {
       <h2 class="sec">All sessions</h2>
       ${rows.length ? `<div class="seslist">${rows.map(row).join('')}</div>`
                     : '<p class="muted small">Nothing here yet.</p>'}
+      <p class="muted small">Share sends a copy of one session to another engineer. <b>It is not a backup</b> — it holds that batch and nothing else, not your settings and not your other sessions. Settings → Export and backup is what protects the phone.</p>
 
       <h2 class="sec">From another engineer</h2>
       <p class="muted small">Import a session file another engineer shared from this app. Anything scanned twice is flagged for you to look at before it lands.</p>
@@ -866,10 +867,10 @@ function renderAbout() {
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V10</b> — Change on the Location row now lists the locations from the session the item is actually in, rather than the one you happen to be working in. Before, an item from another engineer's batch — or from a job you finished last week — could be filed under a room that batch never contained, which the client's file would have shown as an item in a place that was not in it. Save &amp; scan is not offered on those items, because the room you are stood in belongs to today's session. The Sessions screen now says plainly that sharing a session is not the same as taking a backup.</p>
       <p class="muted small"><b>V9</b> — an item filed in the wrong room can now be moved by scanning. Tap it in the log, tap <b>Save &amp; scan</b> on the Location row, then stand in the right room and scan its location barcode. Anything else you had corrected on that item is saved first. Picking from the list still works exactly as before, and is still the way to do it when you are not stood in the room.</p>
       <p class="muted small"><b>V8</b> — the scan screen has been tightened up so it fits on the phone without scrolling. The session you are working in, and the last thing you recorded, are both visible at the bottom of the screen while you are between scans rather than just off the end of it. The last item is now a single line with Edit and Undo beside it. Once a location is set it takes one line instead of two, and the "Scan an asset" prompt only explains itself in Initial mode, where there is something to explain.</p>
       <p class="muted small"><b>V7</b> — work is now kept in <b>sessions</b>: a named batch you scan into, shown at the foot of the scan screen and managed from Settings → Sessions. Exporting sends the whole of the session you are in — everything in it, whether it has been sent before or not — so the client always receives a complete batch rather than loose corrections. You can share a session with another engineer and import theirs; anything scanned by both of you is listed side by side so you can pick which result goes to the client before it lands. Sessions can be merged. The Class and Inspection switches are now the same width.</p>
-      <p class="muted small"><b>V6</b> — the export now matches the client's own layout: one row per asset, with separate columns for the visual, operational, earth bond and insulation results. Earth bond and insulation are filled in for you from figures you set in Settings, and you can correct either on any item from the log. Class is now written as 1 and 2. A Class 2 item never carries an earth bond reading. The scan screen shows the last thing you recorded at the bottom, so you can check it or undo it without opening the log, and the log now carries running totals.</p>
       
       <p class="muted small">© 2026 Peter Birchley. All rights reserved.</p>
     </main>
@@ -1146,10 +1147,17 @@ function openFailSheet(onPick, onCancel) {
 // ⚠ THE LIST IS BUILT ONCE AND NEVER REBUILT while the sheet lives — the same
 // rule the Quick Pick grid follows. Nothing here re-sorts or re-filters under
 // the finger.
-function openLocationPickerSheet(currentId, onPick, onCancel) {
+//
+// ⚠ V10 — `sessionId` IS THE ITEM'S SESSION, NOT THE CURRENT ONE, and passing
+// it is not optional at the call site. The log lists every session, so this
+// sheet opens on items from other batches; before V10 it offered them today's
+// locations, which would file an item under a location its own export lacks.
+// See the note on locationChoices() for the full reasoning.
+function openLocationPickerSheet(currentId, onPick, onCancel, sessionId) {
   const back = (typeof onCancel === 'function') ? onCancel : () => render();
   const sheet = _openSheet('Location');
-  const rows = locationChoices(3);
+  const otherSession = isNonEmptyString(sessionId) && sessionId !== state.currentSessionId;
+  const rows = locationChoices(3, sessionId);
 
   const body = rows.length
     ? `<div class="reasonlist">
@@ -1173,11 +1181,19 @@ function openLocationPickerSheet(currentId, onPick, onCancel) {
           </button>`;
         }).join('')}
       </div>`
-    : `<p class="muted">No locations scanned yet. Scan a location barcode first, then come back.</p>`;
+    // ⚠ V10 — TWO DIFFERENT EMPTINESSES AND ONLY ONE OF THEM IS FIXABLE HERE.
+    // "Go and scan one" is good advice for the batch you are working in and
+    // useless for somebody else's: scanning a location now puts it in TODAY's
+    // session, which is exactly the list this item may not be offered.
+    : otherSession
+      ? `<p class="muted">That item belongs to another session, and nothing was scanned as a location in it. There is nowhere to move it to.</p>`
+      : `<p class="muted">No locations scanned yet. Scan a location barcode first, then come back.</p>`;
 
   sheet.innerHTML = `
     <h3 class="sheet-title">Which location?</h3>
-    <p class="sheet-body">Moving this item files it under a different location in the export. Nothing else about it changes.</p>
+    <p class="sheet-body">Moving this item files it under a different location in the export. Nothing else about it changes.${otherSession
+      ? ' This item is in another session, so the list is that session\'s locations.'
+      : ''}</p>
     ${body}
     <div class="sheet-actions">
       <button type="button" class="btn btn-ghost" id="lp-cancel">Cancel</button>
@@ -1270,8 +1286,12 @@ function openEditSheet(id, draft) {
           ? escapeHTML(locLine)
           : 'Not recorded'}</span>
         <button type="button" class="linkbtn" id="ed-locchange">Change</button>
-        <button type="button" class="linkbtn" id="ed-locscan">Save &amp; scan</button>
+        ${inCurrentSession(rec)
+          ? '<button type="button" class="linkbtn" id="ed-locscan">Save &amp; scan</button>'
+          : ''}
       </div>
+      ${inCurrentSession(rec) ? '' :
+        '<p class="sheet-note">This item is in another session. Change lists that session\'s locations; scanning one is not offered, because the room you are stood in belongs to this session.</p>'}
       <label class="lbl" for="ed-desc">Description</label>
       ${picks.length ? `<div class="quick-grid" id="ed-quick">
         ${picks.map(p => `<button type="button" class="quick-btn" data-q="${escapeHTML(p)}">${escapeHTML(p)}</button>`).join('')}
@@ -1361,7 +1381,10 @@ function openEditSheet(id, draft) {
           draftNow.locationId = picked;
           openEditSheet(id, draftNow);
         },
-        () => openEditSheet(id, draftNow)
+        () => openEditSheet(id, draftNow),
+        // V10 — THE RECORD'S session, read fresh rather than captured, because
+        // this closure outlives the sheet that made it.
+        rec.sessionId
       );
     };
 
@@ -1531,10 +1554,18 @@ function openEditSheet(id, draft) {
     };
 
     // V9 — scan-to-move. Save, close, land on the log armed and waiting.
-    sheet.querySelector('#ed-locscan').onclick = () => {
-      if (!saveAll()) return;
-      armMove(id);
-    };
+    //
+    // ⚠ V10 — THE BUTTON IS CONDITIONAL NOW, SO THIS MUST BE GUARDED. An
+    // out-of-session item does not get one (2A); querySelector returns null and
+    // an unguarded .onclick here would throw INSIDE THE SHEET BUILDER, leaving
+    // a half-wired edit sheet on screen with no Save and no Cancel.
+    const locScan = sheet.querySelector('#ed-locscan');
+    if (locScan) {
+      locScan.onclick = () => {
+        if (!saveAll()) return;
+        armMove(id);
+      };
+    }
   }
 
   sheet.querySelector('#ed-cancel').onclick = () => { closeSheet(); render(); };

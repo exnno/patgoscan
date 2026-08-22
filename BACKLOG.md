@@ -10,6 +10,41 @@ things worth considering when the client's actual working day suggests them.
 
 *(Nothing outstanding. Both long-running questions closed in V6.)*
 
+## Closed in V10
+
+- **~~The picker can point an item at a location in another session.~~** ✅ FIXED
+  V10, and fixed by making the list right rather than by taking the control
+  away. `locationChoices()` now takes the session it is asked for and the edit
+  sheet passes the RECORD's, so **Change** lists the rooms from the batch the
+  item actually ships in. **Save & scan is dropped for those items** — the room
+  you are stood in belongs to today's session, so a scanned destination could
+  only ever refuse. ⚠ THE EMPTY CASE NEEDED ITS OWN COPY: "scan a location and
+  come back" is actively wrong advice for another session, because the location
+  you scan joins today's.
+- **~~The welcome modal lost V7's "a session file is not a backup" note.~~**
+  ✅ ANSWERED, and moved somewhere it cannot be lost again. It is now a
+  permanent line on the **Sessions screen beside Share**, not welcome copy. ⚠ A
+  MODAL IS WHERE A RULE GOES TO BE FORGOTTEN — the copy is replaced wholesale by
+  whichever release rolls it next, which is exactly how this one vanished
+  between V7 and V9. The import side has said its own version since V7; the
+  outbound direction is the one that loses work, and it was the unguarded one.
+
+## Raised in V10
+
+- **⚠ A DOM stub that cannot fail the way the browser fails certifies broken
+  code.** M174 removed the `if (locScan)` guard around V10's now-conditional
+  Save & scan button — an instant TypeError in a browser, leaving a half-wired
+  edit sheet with no Save and no Cancel — and the suite stayed green, because
+  `stubs.js` manufactured an element for **any** selector. Now an `#id` lookup
+  on a node whose innerHTML does not contain that id returns null. This is the
+  fourth documented way a mutation or stub has failed to test what it claimed
+  here, after wrong selector, wrong text and wrong edit: **wrong stub.**
+- **Batch initials.** Raised by Peter alongside V10 and deliberately not in it —
+  scan a start number, set a count, and file that many items with the same
+  description, class and result. ⚠ IT IS THE FIRST TIME THE APP WOULD INVENT AN
+  ASSET ID RATHER THAN READ ONE, which is a change to what the app is for and
+  needs its own release and its own decisions. Specced separately.
+
 ## Closed in V9
 
 - **~~Scan a location barcode to move an item there.~~** ✅ SHIPPED V9. Raised in
@@ -25,24 +60,16 @@ things worth considering when the client's actual working day suggests them.
 
 ## Raised in V9
 
-- **⚠ The picker can point an item at a location in another session.** V9's scan
-  path refuses this outright, because the log lists every session and the edit
-  sheet opens on any of them — an item pointed at a location outside its own
-  batch exports under a location its file does not contain. **The V4 picker has
-  the same hole from the other side**: `locationChoices()` only offers
-  current-session locations, but it will offer them for an item that is not in
-  the current session. Nobody has hit it, it predates V9, and it is one
-  condition to close. Worth doing in V10 while the reasoning is fresh.
+- **~~The picker can point an item at a location in another session.~~**
+  ✅ CLOSED IN V10 — see above.
 - **A mutation that adds dead code proves nothing.** M161 survived its first run
   and the mutation was at fault, not the test: it inserted an `if (false)` line
   above the comment block and left the real assignment below it. A mutation must
   REMOVE or CHANGE the line carrying the invariant, and where the same statement
   appears twice in a file it has to be anchored on its neighbour. Written up in
   the V9 handoff.
-- **The welcome modal lost V7's "a session file is not a backup" note** when the
-  copy was rewritten for V9. The app still enforces the rule and stops you
-  picking the wrong one, so nothing is unsafe — but it is the only place that
-  warning was ever made in words. Say if it should be carried forward.
+- **~~The welcome modal lost V7's "a session file is not a backup" note.~~**
+  ✅ CLOSED IN V10 — carried forward, and not into another modal.
 
 ## Closed in V8
 
