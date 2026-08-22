@@ -39,7 +39,7 @@ const MUTATIONS = [
   // the version bump breaks the find string and the mutation reports SKIPPED.
   // Update it as part of the bump; a skip here means the cache-key invariant
   // is unguarded for that release, which is how a build ships without one.
-  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v10'", "const CACHE_VERSION = 'pat-v71'",
+  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v11'", "const CACHE_VERSION = 'pat-v71'",
     'cache key using the parent app prefix'],
   ['M04', 'utils.js', '(c) 2026 Peter Birchley. All rights reserved.', '(c) 2026',
     'copyright header stripped'],
@@ -673,7 +673,7 @@ const MUTATIONS = [
     "function armMove(id) {\n  setView('log');\n  state.moveArmed = id;",
     "function armMove(id) {\n  state.moveArmed = id;\n  setView('log');",
     'armMove ordering reversed — setView clears the arm it just set'],
-  ['M168', 'README.md', 'cache `scan-v10`', 'cache `scan-v9`',
+  ['M168', 'README.md', 'cache `scan-v11`', 'cache `scan-v10`',
     'the README front page left on the previous release'],
 
   // --- V10: the picker's cross-session hole -------------------------------
@@ -714,6 +714,70 @@ const MUTATIONS = [
     "      <p class=\"muted small\">Share sends a copy of one session to another engineer. <b>It is not a backup</b>",
     "      <p class=\"muted small\">Share sends a copy of one session to another engineer. <b>Handy</b>",
     'the session-file-is-not-a-backup warning lost a second time (3A)'],
+
+  // --- V11: batch initials, and the mode badge ----------------------------
+  //
+  // ⚠ THESE GUARD A DIFFERENT KIND OF INVARIANT FROM EVERY MUTATION ABOVE
+  // THEM. Until V11 the worst a broken write path could do was record the wrong
+  // thing about a scan that happened. A run writes codes NOBODY SCANNED, so
+  // M177–M181 each break a rule whose failure mode is invented data reaching
+  // the client's system looking exactly like real data.
+  ['M177', 'utils.js',
+    "  const m = s.match(/^(.*?)(\\d+)$/);",
+    "  const m = s.match(/^(.*)(\\d+)$/);",
+    'a greedy prefix — PAT-0998 counting up as PAT-09910'],
+  ['M178', 'utils.js',
+    "    out.push(parts.prefix + (v.length >= width ? v : '0'.repeat(width - v.length) + v));",
+    "    out.push(parts.prefix + v);",
+    'the zero padding dropped — 0008 filed alongside 9 and 10'],
+  ['M179', 'utils.js',
+    "  if (parts.digits.length > 15) return [];",
+    "  if (parts.digits.length > 99) return [];",
+    'a tail past the safe integer range counted anyway, plausibly and wrongly'],
+  ['M180', 'log.js',
+    "  if (firstClashInRun(codes)) return null;",
+    "",
+    '⚠ THE GAP RULE (3A) — a run written straight over an id already on file'],
+  ['M181', 'log.js',
+    "      code: codes[i],\n      mode: pending.mode,",
+    "      code: pending.code,\n      mode: pending.mode,",
+    'every item in the run filed under the ONE scanned id'],
+  ['M182', 'render.js',
+    "    if (canRun && runCount > 1) {\n      const clash = firstClashInRun(runCodesFrom(code, runCount));\n      if (clash) { showToast(clash + ' is already logged'); return; }\n    }",
+    "",
+    'the sheet letting a clashing run through to the verdict panel'],
+  ['M183', 'render.js',
+    "  const canRun = runCodesFrom(code, 2).length === 2 && !state._pendingReplaceId;",
+    "  const canRun = runCodesFrom(code, 2).length === 2;",
+    'a run offered on a re-scan — one record replaced and the rest invented'],
+  ['M184', 'dispatch.js',
+    "    if (!n) { commitResult('fail', reason); return; }",
+    "    commitResult('fail', reason); if (n) return;",
+    '⚠ DECISION 5 — a run failing on one tap with no confirmation at all'],
+  ['M185', 'dispatch.js',
+    "  if (!rec && pending.count > 1) {",
+    "  if (false) {",
+    'a refused run throwing away the scan and the typed description'],
+  ['M190', 'dispatch.js',
+    "  if (rec && pending.count > 1) showToast(pending.count + ' items recorded');",
+    "  if (rec) showToast(pending.count + ' items recorded');",
+    'the run receipt fired on every single scan, which is how it stops being read'],
+  ['M186', 'render.js',
+    "      <button type=\"button\" class=\"btn-pass\" data-action=\"pass\">${runCount ? 'PASS ALL ' + runCount : 'PASS'}</button>",
+    "      <button type=\"button\" class=\"btn-pass\" data-action=\"pass\">PASS</button>",
+    'the one-tap button no longer saying how many it writes'],
+  ['M187', 'render.js',
+    "      <span class=\"row-mode ${isInitial ? 'is-initial' : 'is-audit'}\">${isInitial ? 'INITIAL' : 'AUDIT'}</span>",
+    "      ${isInitial ? '<span class=\"row-mode is-initial\">INITIAL</span>' : ''}",
+    '7A half-done — only the initial rows labelled, audit inferred from silence'],
+  ['M188', 'render.js',
+    "    const isInitial = r.mode === MODE_INITIAL;",
+    "    const isInitial = state.mode === MODE_INITIAL;",
+    '⚠ RULE 11 — the badge read off the live toggle, re-labelling finished work'],
+  ['M189', 'styles.css',
+    ".row-item { padding-right: 76px; }",
+    "",
+    'the badge with no gutter — a long asset code running underneath it'],
 ];
 
 function run(cmd) {

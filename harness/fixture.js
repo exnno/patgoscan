@@ -121,6 +121,16 @@ function resetApp(app) {
   // that has not focused anything.
   app.doc.activeElement = null;
 
+  // V11. ⚠ AND THE TOAST, FOR THE SAME REASON AS THE TWO ABOVE. showToast()
+  // writes into a node it appends to <body> ONCE and then reuses forever, so
+  // the message survives every reset and every render. A group asserting that
+  // something stayed SILENT therefore reads the previous group's toast and
+  // fails — pointing at code that is working, in a group that never called
+  // showToast at all. Found in V11 by exactly that: 16g went red because 16f
+  // had just written a run receipt.
+  const _toast = app.doc.getElementById('toast');
+  if (_toast) _toast.textContent = '';
+
   const st = app.state();
   st.records = [];
   st.currentLocationId = '';
