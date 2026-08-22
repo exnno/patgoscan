@@ -7,7 +7,7 @@
  * read in one place — that is what makes the backup file provably complete.
  */
 
-const APP_VERSION = 'V7';
+const APP_VERSION = 'V8';
 
 // The welcome modal key carries the version IN THE VALUE, never in the
 // identifier. A version-named identifier caused a white screen in the parent

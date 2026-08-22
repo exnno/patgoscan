@@ -10,6 +10,40 @@ things worth considering when the client's actual working day suggests them.
 
 *(Nothing outstanding. Both long-running questions closed in V6.)*
 
+## Closed in V8
+
+- **~~The last-item quick view sits below the fold.~~** ✅ ANSWERED AND FIXED.
+  Raised in V5, shipped in V6, and the V6 note called the outcome exactly:
+  *"the likeliest reason it fails: on a smaller phone it sits below the fold, so
+  confirming a scan costs a scroll. That is a placement problem, not an idea
+  problem."* It was measured in V8 — the idle scan screen wanted ~810px against
+  ~685px available on a 17 Pro, so the block was ~125px past the bottom. It is
+  now one row (~62px) and the whole screen fits with room to spare. ⚠ THE TRIAL
+  IS NOT OVER, IT HAS ONLY NOW STARTED FAIRLY: until V8 nobody had used this
+  feature without scrolling to it. Judge it over the next few working days.
+- **~~The session strip is invisible.~~** ✅ FIXED BY THE SAME CUT, and it was
+  the same cause. The strip was directly above the last-item block and directly
+  below the same fold, so "there is no sessions screen" was the honest reading
+  of what the phone was showing. Decision 1A: no new nav tab, no move — it just
+  needed to be on screen. Settings → Sessions was always the other way in.
+
+## Raised in V8
+
+- **⚠ The pending scan screen still overflows, by ~163px.** Decision 2A took the
+  tightening only. Measured, the fold now lands just below the counts: PASS/FAIL
+  (bottom edge ~542), Discard (~600) and the counts (~644) are all on screen,
+  and the session strip is clipped by a few pixels with the last item below it.
+  That is the right trade — mid-scan the last item is the wrong card to be
+  reading — but it is a trade, not an accident. **2B is the held lever:** hide
+  the last-item block while a scan is pending, which recovers the lot. Three
+  lines, no decisions attached, if it nags in the field.
+- **The changelog roll was not being enforced.** Test 10j's own comment warned
+  that asserting "the oldest is present, the one before it is not" would stay
+  green on a changelog that grew and never dropped — and then V7 grew it to four
+  entries and the test stayed green, because once V3 was gone it could never
+  fail again. Now counted: four entries, newest first, oldest drops off. V4 was
+  dropped in V8 to bring it back into line.
+
 ## Closed in V7
 
 - **~~Work saved as sessions.~~** ✅ SHIPPED V7. `sessions.js`, plus the

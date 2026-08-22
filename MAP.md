@@ -1,4 +1,4 @@
-# PATGo Scan — Code Map (V6)
+# PATGo Scan — Code Map (V8)
 
 Routing only: which concern lives in which file, and the cross-file couplings
 you cannot discover by reading one file. Read this to decide *what to open*.
@@ -42,8 +42,12 @@ you cannot discover by reading one file. Read this to decide *what to open*.
    `SCANNER_PAIRED_KEY` sits on the next line from `SCANNER_KEY` in config.js and
    is ordinary opt-in. Harness-asserted both ways.
 
-8. **`backupVersion` is 1.** Additive fields ride through and do not spend a
-   bump. Bump only for a genuinely incompatible change of shape.
+8. **`backupVersion` is 3** — 1 → 2 in V6 (the class value), 2 → 3 in V7 (the
+   sessions shape). Additive fields ride through and do not spend a bump; bump
+   only for a genuinely incompatible change of shape. ⚠ This entry said "1"
+   through V6 and V7 and was two releases out of date when V8 found it, which is
+   the exact failure this file exists to prevent — a stale routing note sends
+   somebody to the wrong conclusion faster than no note at all.
 
 9. **`prompt()` / `confirm()` / `alert()` are banned** — iOS can suppress them
    silently inside a PWA. Use the `.bulk-sheet` dialogs in feedback.js.
@@ -292,7 +296,7 @@ a session file handed to this path is refused by name. ⚠ V7: the file carries
 restored in 2028 does not arrive as a pile of orphans. ⚠ A boolean restores only when the backup
 actually holds one; absence ≠ off. Clearing refuses while anything is unexported.
 
-### sessions.js (~470 ln, V7) — sessions, exchange, merge, review
+### sessions.js (~600 ln, V7) — sessions, exchange, merge, review
 The spine (create / switch / close / reopen / the open invariant), the session
 file exchange, the merge, and the duplicate review.
 **Touch to:** change what a session is, how one travels between phones, or how a
@@ -322,7 +326,16 @@ message rather than passing it through. Do not add a raw-text fallback.
 limit: boot.js loads last, so a parse-time failure earlier predates these
 handlers — the integrity guard covers that case instead.
 
-### render.js (~845 ln) — every screen, every sheet
+### render.js (~1490 ln) — every screen, every sheet
+
+⚠ **V8 — THREE SCAN-SCREEN BLOCKS ARE COUPLED TO `styles.css` AND USELESS ALONE.**
+`renderLastItem()` puts `.lastitem-acts` INSIDE `.lastitem-main` because the rule
+that pushes Edit/Undo right is `margin-left: auto`, which does nothing outside
+that flex row. The prompt's sub-line is emitted in Initial only (3C). The
+location bar collapses to one row via `.locbar.is-set` alone, never `.locbar`.
+Change either half without the other and the markup still renders, still passes
+a behaviour test, and is silently a line taller on the phone. Harness 15b–15d
+assert markup and stylesheet together; mutations M156–M158.
 `setView`, `render()` and its dispatcher, the scan screen, log, settings pages,
 about, welcome, and the five sheets (new item, new location, fail reason, edit,
 and V4's location picker).
@@ -385,6 +398,20 @@ when `load()` threw — that is what keeps a bad release recoverable.
   `--accent-soft` — collapsing them tints both modes alike and destroys the
   mode signal. `.main--nonav` opts a nav-less screen out of the nav gutter.
   ⚠ No `100dvh + overflow:hidden` layout — it traps content behind the keyboard.
+
+  ⚠ **V8 — `env(safe-area-inset-bottom)` IS APPLIED ONCE, AND ONLY BY THE THING
+  AT THE BOTTOM EDGE.** Five selectors carry it and no others: `.nav`, `.main`,
+  `.main--nonav`, `.bulk-sheet`, `.update-banner`. It was on `body` as well
+  until V8, so with `.screen { min-height: 100vh }` every page in the app was
+  ~34px taller than the phone and permanently scrollable. Anything BEHIND the
+  bottom edge — `body`, `.screen`, any future wrapper — can only ever double up.
+  Harness 15a asserts the allow-list; mutation M155 moves it to `.screen` to
+  prove the assertion catches the whole class and not just the one selector.
+
+  ⚠ **V8 — THE SCAN SCREEN HAS A HEIGHT BUDGET AND IT IS ASSERTED.** Harness 15e
+  holds a ceiling on each of the nine declared values V8 shrank. Raising one is a
+  deliberate act: raise the ceiling too and say why in the handoff. A ceiling
+  edited quietly to match a new value is the same as not having one.
   ⚠ `.sheet-backdrop` / `.bulk-sheet` sizing is JS-driven — rule 13. The values
   here are the keyboard-down fallback, not the working geometry.
 - `index.html` — the `<script>` chain. Small enough to read whole.

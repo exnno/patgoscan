@@ -87,17 +87,36 @@ body {
   line-height: 1.45;
   color: var(--ink);
   background: var(--bg);
-  padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* ⚠ V8 — THE HOME INDICATOR INSET IS APPLIED ONCE, AND NOT HERE. Until V8 this
+   rule carried `padding-bottom: env(safe-area-inset-bottom)` as well as .nav
+   (and as well as .main--nonav), so the inset was counted TWICE on every
+   screen. .screen is `min-height: 100vh`, so the document came out ~34px taller
+   than the phone on a 17 Pro no matter what was on it: every page was always
+   scrollable by a thumb's width, and nothing could ever be made to fit exactly.
+   It read as "the layout is just slightly too big", which is the hardest kind
+   of bug to see, because it is true of every screen equally.
+
+   The inset belongs to whatever is actually AT the bottom edge — .nav on the
+   tabbed screens, .main--nonav on the four back-arrow pages, .bulk-sheet on a
+   sheet. ⚠ Do not put it back here "for safety": body is behind all three, so
+   it can only ever double up. */
 .screen { min-height: 100vh; display: flex; flex-direction: column; }
 
-/* The 96px bottom gutter exists ONLY to clear the sticky nav bar. The four
-   pages reached by the back arrow — Scanner, Lists, Export and backup, About —
-   have no nav, so on those it was 96px of dead space under the last control
-   with nothing to explain it. --nonav is the opt-out. ⚠ Add it to any new
-   screen that does not end in renderNav(). */
-.main { flex: 1; padding: 16px 16px 96px; }
+/* The bottom gutter exists ONLY to clear the sticky nav bar. The four pages
+   reached by the back arrow — Scanner, Lists, Export and backup, About — have
+   no nav, so on those it was dead space under the last control with nothing to
+   explain it. --nonav is the opt-out. ⚠ Add it to any new screen that does not
+   end in renderNav().
+
+   ⚠ V8 — IT IS NOW DERIVED FROM THE NAV RATHER THAN GUESSED. The nav is one
+   border plus a 48px tap target plus the home indicator inset. The old flat
+   96px was that sum rounded up on the phone it was measured on, which meant it
+   was ~13px too generous there and ~47px too generous on any phone with no
+   inset at all. 60px + the inset is the same clearance with the slack taken
+   out, and it stays right if --tap is ever changed. */
+.main { flex: 1; padding: 12px 16px calc(60px + env(safe-area-inset-bottom)); }
 .main--nonav { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
 h1, h2, h3 { margin: 0; font-weight: 650; }
 .sec { font-size: 13px; text-transform: uppercase; letter-spacing: .06em;
@@ -153,7 +172,7 @@ li { margin-bottom: 8px; }
    screen tints, because a wrong-mode scan is only cheap if it is noticed in
    seconds rather than at the end of a corridor. */
 .modeswitch {
-  display: flex; gap: 4px; padding: 4px; margin-bottom: 14px;
+  display: flex; gap: 4px; padding: 4px; margin-bottom: 10px;
   background: var(--bg-alt); border-radius: var(--radius);
 }
 .mode-opt {
@@ -179,12 +198,37 @@ li { margin-bottom: 8px; }
 /* @@ location ----------------------------------------------------------- */
 .locbar {
   display: flex; flex-direction: column; gap: 2px;
-  padding: 12px 14px; border-radius: var(--radius); margin-bottom: 14px;
+  padding: 12px 14px; border-radius: var(--radius); margin-bottom: 10px;
   border: 1px solid var(--line); background: var(--bg-alt); cursor: pointer;
 }
 .locbar-label { font-weight: 650; }
 .locbar-hint { font-size: 13px; color: var(--ink-soft); }
 .locbar.is-set { border-color: var(--accent); }
+
+/* ⚠ V8 — ONE LINE ONCE A LOCATION IS SET, AND ONLY THEN. This is the state the
+   phone is in for almost the whole working day, and in it the bar is a label
+   being confirmed at a glance rather than an instruction being read: the name
+   and the barcode sit side by side and the row costs 21px less than the stacked
+   version. That 21px is spent at the foot of the screen on the last-item block.
+
+   The other two states stay stacked on purpose. `is-empty` is genuinely
+   instructional ("No location set" / "Tap, then scan a location barcode") and
+   will not fit one 402px row without truncating the instruction, and `is-armed`
+   is the one moment the bar is SHOUTING — shrinking the state that is trying to
+   catch the eye would be exactly backwards. The screen changes height slightly
+   when a location is set; that happens once per room and is not worth chasing.
+
+   The name truncates and the code does not: the code is what the client reads
+   and a half-shown barcode is worse than no barcode. */
+.locbar.is-set {
+  flex-direction: row; align-items: baseline; gap: 10px;
+  padding: 10px 14px;
+}
+.locbar.is-set .locbar-label {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.locbar.is-set .locbar-hint { flex: 0 0 auto; }
 .locbar.is-empty .locbar-label { color: var(--ink-soft); }
 .locbar.is-armed {
   border-color: var(--accent); background: var(--accent);
@@ -222,7 +266,7 @@ li { margin-bottom: 8px; }
    which is why the row gap moved onto the grid. */
 .toggrid {
   display: grid; grid-template-columns: max-content 1fr;
-  align-items: center; column-gap: 10px; row-gap: 8px; margin-bottom: 14px;
+  align-items: center; column-gap: 10px; row-gap: 6px; margin-bottom: 10px;
 }
 .togrow { display: contents; }
 .tog-label {
@@ -235,7 +279,7 @@ li { margin-bottom: 8px; }
   border-radius: 10px;
 }
 .tog-opt {
-  flex: 1; min-height: 38px; border: 0; border-radius: 7px; cursor: pointer;
+  flex: 1; min-height: 36px; border: 0; border-radius: 7px; cursor: pointer;
   background: none; font-size: 15px; font-weight: 600; color: var(--ink-soft);
 }
 .tog-opt.is-on {
@@ -266,7 +310,7 @@ li { margin-bottom: 8px; }
 
 /* @@ scan --------------------------------------------------------------- */
 .scanbox {
-  width: 100%; min-height: 56px; padding: 0 14px; margin-bottom: 6px;
+  width: 100%; min-height: 52px; padding: 0 14px; margin-bottom: 4px;
   font-size: 22px; font-weight: 650; letter-spacing: .02em;
   font-variant-numeric: tabular-nums;
   border: 2px solid var(--line); border-radius: var(--radius);
@@ -279,7 +323,20 @@ li { margin-bottom: 8px; }
   100% { background: var(--bg); }
 }
 
-.prompt { text-align: center; padding: 26px 8px; }
+/* ⚠ V8 — 26px OF PADDING BECAME 12, AND THE SUB-LINE IS NOW INITIAL-ONLY.
+   This block is the largest single piece of empty space on the idle screen and
+   it says nothing the engineer does not already know: the scan box is directly
+   above it and the mode switch is directly above that. It was sized when the
+   screen had fewer things on it. Between them the two changes hand ~50px in
+   Audit and ~28px in Initial down to the last-item block, which is the thing
+   that was actually falling off the bottom of a 17 Pro.
+
+   ⚠ THE SUB-LINE SURVIVES IN INITIAL AND MUST. Same asymmetry as the Visual
+   toggle: the costly mode is the one that gets told about itself. "Audit — pass
+   or fail only" repeats the switch verbatim; "Initial — you will be asked for a
+   description" warns of something that is about to happen. Do NOT restore the
+   Audit line for symmetry — symmetry is what made this block too tall. */
+.prompt { text-align: center; padding: 12px 8px; }
 .prompt-big { display: block; font-size: 21px; font-weight: 650; }
 .prompt-small { display: block; font-size: 14px; color: var(--ink-soft); margin-top: 4px; }
 
@@ -320,7 +377,7 @@ li { margin-bottom: 8px; }
 
 .counts {
   display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap;
-  padding: 14px 2px; font-size: 15px; color: var(--ink-soft);
+  padding: 8px 2px; font-size: 15px; color: var(--ink-soft);
 }
 .counts b { color: var(--ink); font-size: 19px; }
 .counts-note { margin-left: auto; font-size: 13px; }
@@ -339,25 +396,52 @@ li { margin-bottom: 8px; }
    ⚠ IT IS DELIBERATELY QUIET. Muted border, no fill, subordinate to the verdict
    buttons above it. It sits at the foot of the screen and must never compete
    with PASS and FAIL for a thumb. */
+/* ⚠ V8 — FOUR LINES BECAME ONE (decision 4B), AND THAT IS WHY IT IS ON SCREEN.
+   V6 built this as label / code+result / description / Edit+Undo stacked, which
+   came to ~141px. On a 17 Pro the whole block sat below the fold, and the V6
+   backlog predicted exactly that: "the likeliest reason it fails: on a smaller
+   phone it sits below the fold, so confirming a scan costs a scroll. That is a
+   placement problem, not an idea problem." It was right, and this is the fix —
+   the block is now ~89px and the trial gets a fair hearing at last.
+
+   The standing "Last recorded" label is gone with them. It was explaining a
+   block that explains itself: an asset id and a PASS beneath the scan box is
+   not ambiguous, and a label that is read once and then never again is pure
+   height. ⚠ Everything is on ONE baseline row — code, result, then Edit and
+   Undo pushed right by margin-left:auto on the actions.
+
+   ⚠ THE DESCRIPTION KEEPS ITS OWN LINE, WHEN THERE IS ONE. Only initial items
+   have one, so audit items — the overwhelming majority — get the single row and
+   the smaller block. It is the one piece here that cannot be reconstructed by
+   looking at the screen: the id and the result are both a glance away, but a
+   mistyped description is invisible until it reaches the client. Do not fold it
+   into the main row to save the last 20px; at 402px it truncates the asset id.
+
+   ⚠ STILL A TRIAL, STILL THREE EDITS TO REMOVE — renderLastItem() in render.js,
+   the two actions in dispatch.js, this block. Nothing else on the screen moves.
+   Do not fold these rules into .pending or .counts. */
 .lastitem {
   display: flex; flex-direction: column; gap: 2px;
-  margin-top: 18px; padding: 12px 14px;
+  margin-top: 10px; padding: 6px 12px;
   border: 1px solid var(--line); border-radius: var(--radius);
   background: var(--bg-alt);
-}
-.lastitem-label {
-  font-size: 12px; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--ink-soft);
 }
 .lastitem-main { display: flex; align-items: baseline; gap: 10px; }
 .lastitem-code {
   font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.lastitem-result { font-size: 13px; font-weight: 700; }
+.lastitem-result { font-size: 13px; font-weight: 700; letter-spacing: .04em; }
 .lastitem-result.is-pass { color: var(--pass); }
 .lastitem-result.is-fail { color: var(--fail); }
-.lastitem-sub { font-size: 14px; color: var(--ink-soft); }
-.lastitem-acts { display: flex; gap: 18px; margin-top: 2px; }
+.lastitem-sub {
+  font-size: 13px; color: var(--ink-soft);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Pushed to the right-hand end of the same row rather than given a row of their
+   own. ⚠ The 18px gap between Edit and Undo is NOT decoration — Undo is
+   destructive and sits next to a control you tap often. Do not close it up. */
+.lastitem-acts { display: flex; gap: 18px; margin-left: auto; flex: 0 0 auto; }
 
 /* @@ V6 readings on the edit sheet --------------------------------------- */
 .readrow { display: flex; gap: 10px; }

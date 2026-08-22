@@ -227,12 +227,23 @@ function renderScan() {
     </div>
     <button type="button" class="btn btn-ghost btn-wide" data-action="cancelPending">Discard this scan</button>`;
   } else {
+    // ⚠ V8 (3C) — THE SUB-LINE APPEARS IN INITIAL ONLY. "Audit — pass or fail
+    // only" restated the mode switch two blocks above it and cost a line on
+    // every idle screen for it. The Initial line does not restate anything: it
+    // warns that a sheet is about to open and ask for a description, which is
+    // the one thing about to happen that the switch does not say.
+    //
+    // Same asymmetry as the Visual toggle, and for the same reason — the costly
+    // mode is the one that gets told about itself. ⚠ Do not add an Audit line
+    // back for symmetry. The screen changes height by ~22px when you flip
+    // modes; that is deliberate and it is a second, peripheral signal that the
+    // mode changed at all.
     panel = `
     <div class="prompt">
       <span class="prompt-big">Scan an asset</span>
-      <span class="prompt-small">${initial
-        ? 'Initial — you will be asked for a description'
-        : 'Audit — pass or fail only'}</span>
+      ${initial
+        ? '<span class="prompt-small">Initial — you will be asked for a description</span>'
+        : ''}
     </div>`;
   }
 
@@ -315,18 +326,28 @@ function renderLastItem() {
   const bits = [rec.description, rec.cls ? 'Class ' + rec.cls : '',
     rec.visual === true ? 'Visual' : '']
     .filter(isNonEmptyString).join(' · ');
+  // ⚠ V8 (4B) — ONE ROW. The standing "Last recorded" label and the actions'
+  // own row are both gone; Edit and Undo now sit at the right-hand end of the
+  // same baseline as the code, pushed there by .lastitem-acts. This took the
+  // block from ~141px to ~58px, which is the whole reason it is now above the
+  // fold on a 17 Pro rather than a scroll below it.
+  //
+  // ⚠ THE DESCRIPTION LINE IS CONDITIONAL AND STAYS THAT WAY. `bits` is only
+  // non-empty on initial items (description, class, visual), so an audit item —
+  // which is most of them — renders as a single row. Do not give it a permanent
+  // empty line to keep the block a constant height: a constant height is worth
+  // nothing here and 20px on this screen is worth a lot.
   return `
   <div class="lastitem">
-    <span class="lastitem-label">Last recorded</span>
     <div class="lastitem-main">
       <span class="lastitem-code">${escapeHTML(rec.code)}</span>
       <span class="lastitem-result is-${escapeHTML(rec.result || 'none')}">${escapeHTML((rec.result || '').toUpperCase())}</span>
+      <div class="lastitem-acts">
+        <button type="button" class="linkbtn" data-action="editLastItem">Edit</button>
+        <button type="button" class="linkbtn is-danger" data-action="undoLastItem">Undo</button>
+      </div>
     </div>
     ${bits ? `<span class="lastitem-sub">${escapeHTML(bits)}</span>` : ''}
-    <div class="lastitem-acts">
-      <button type="button" class="linkbtn" data-action="editLastItem">Edit</button>
-      <button type="button" class="linkbtn is-danger" data-action="undoLastItem">Undo</button>
-    </div>
   </div>`;
 }
 
@@ -817,10 +838,10 @@ function renderAbout() {
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V8</b> — the scan screen has been tightened up so it fits on the phone without scrolling. The session you are working in, and the last thing you recorded, are both visible at the bottom of the screen while you are between scans rather than just off the end of it. The last item is now a single line with Edit and Undo beside it. Once a location is set it takes one line instead of two, and the "Scan an asset" prompt only explains itself in Initial mode, where there is something to explain.</p>
       <p class="muted small"><b>V7</b> — work is now kept in <b>sessions</b>: a named batch you scan into, shown at the foot of the scan screen and managed from Settings → Sessions. Exporting sends the whole of the session you are in — everything in it, whether it has been sent before or not — so the client always receives a complete batch rather than loose corrections. You can share a session with another engineer and import theirs; anything scanned by both of you is listed side by side so you can pick which result goes to the client before it lands. Sessions can be merged. The Class and Inspection switches are now the same width.</p>
       <p class="muted small"><b>V6</b> — the export now matches the client's own layout: one row per asset, with separate columns for the visual, operational, earth bond and insulation results. Earth bond and insulation are filled in for you from figures you set in Settings, and you can correct either on any item from the log. Class is now written as 1 and 2. A Class 2 item never carries an earth bond reading. The scan screen shows the last thing you recorded at the bottom, so you can check it or undo it without opening the log, and the log now carries running totals.</p>
       <p class="muted small"><b>V5</b> — two switches now sit under the location bar and stay where you put them: <b>Class</b> (I or II) and <b>Test or Visual</b>. They apply to everything you scan in both modes, so a run of the same kind of appliance is set once rather than answered item by item. New items no longer ask for a class. An item recorded as Visual is called out on screen before you pass it and again in the log. The export gained separate columns for class and for visual inspections.</p>
-      <p class="muted small"><b>V4</b> — an item logged in the wrong place can now be moved: tap it in the log and change its location. The picker shows each location's time, how many items you did there and what they were, so a bare barcode is still recognisable. Correcting an item also gets the Quick Pick buttons and the description suggestions the new item sheet has.</p>
 
       <p class="muted small">© 2026 Peter Birchley. All rights reserved.</p>
     </main>
