@@ -198,16 +198,39 @@ module.exports = function (app) {
     // and actively misleading in a failure list, which is the one moment
     // anybody reads them.
     const about = app.fn('renderAbout')();
-    A.eq('the app version is V8', app.val('APP_VERSION'), 'V8');
-    A.eq('the cache key matches', L.cacheVersion(), 'scan-v8');
-    // ⚠ NOT ROLLED THIS RELEASE, AND THAT IS DELIBERATE. V8 is a layout
-    // release: it adds no capability, so there is nothing for a welcome modal
-    // to teach. The constant therefore stays behind APP_VERSION on purpose and
-    // this assertion names the version it is allowed to lag at, so that a
-    // FEATURE release which forgets to roll it still fails here.
-    A.eq('⚠ the welcome is deliberately still V7 (V8 adds no capability)',
-      app.val('WELCOME_VERSION'), 'V7');
-    A.ok('About leads with V8', about.indexOf('<b>V8</b>') !== -1);
+    A.eq('the app version is V9', app.val('APP_VERSION'), 'V9');
+    A.eq('the cache key matches', L.cacheVersion(), 'scan-v9');
+    // ⚠ ROLLED THIS RELEASE, unlike V8. V9 adds a capability — a gesture that
+    // does not exist anywhere else in the app and that nobody will discover by
+    // looking at the screen — so the modal has something to teach and the two
+    // constants are back in step. V8's note is kept below because the lag it
+    // describes is legitimate and will happen again on the next pure layout or
+    // refactor release: what this assertion exists to catch is a FEATURE
+    // release that forgets to roll it.
+    A.eq('the welcome version is V9', app.val('WELCOME_VERSION'), 'V9');
+    A.ok('About leads with V9', about.indexOf('<b>V9</b>') !== -1);
+    // ⚠ AND THE MODAL ACTUALLY TEACHES THIS RELEASE. Rolling the constant
+    // without writing the copy shows every engineer a full-screen panel about
+    // the last version — which is worse than not rolling it, because it reads
+    // as the app being wrong rather than as nothing having happened.
+    const welcome = app.fn('renderWelcome')();
+    A.ok('the welcome modal is about V9', welcome.indexOf('New in V9') !== -1);
+
+    // ⚠ V9 — THE README IS THE FOURTH PLACE A VERSION NUMBER LIVES, so it is
+    // asserted rather than trusted. A repo front page saying V8 while the app
+    // says V9 is the kind of wrong nobody notices for three releases, because
+    // the person reading it is by definition the person who does not already
+    // know. The parent app's README has drifted this way. Guarded, it is a
+    // useful line; unguarded, it is documentation rotting in public.
+    const readme = L.readFile('README.md');
+    A.includes('the README names this version', readme, '`' + app.val('APP_VERSION') + '`');
+    A.includes('and this cache key', readme, '`' + L.cacheVersion() + '`');
+    // ⚠ AND IT MUST NOT BE THE HARNESS README. The root README was byte-identical
+    // to harness/README.md until V9 — the front page of the repo was the test
+    // suite's documentation, and nothing there said what the app was.
+    A.includes('the README is about the app', readme, 'https://exnno.github.io/patgoscan/');
+    A.notEq('and is not a second copy of the harness one',
+      readme, L.readFile('harness/README.md'));
 
     // ⚠ COUNTED, NOT SNIFFED — AND THIS IS A REPAIR, NOT A TIDY-UP. The old
     // form asserted "V4 is present, V3 is not" and its own comment warned that
@@ -221,9 +244,9 @@ module.exports = function (app) {
     // The count is the property. Four entries, newest first, oldest drops off.
     const entries = about.match(/<b>V\d+<\/b>/g) || [];
     A.eq('⚠ the changelog holds four entries and rolls', entries.length, 4);
-    A.eq('newest first', entries[0], '<b>V8</b>');
-    A.eq('oldest is V5', entries[3], '<b>V5</b>');
-    A.ok('with V4 dropped off the bottom', about.indexOf('<b>V4</b>') === -1);
+    A.eq('newest first', entries[0], '<b>V9</b>');
+    A.eq('oldest is V6', entries[3], '<b>V6</b>');
+    A.ok('with V5 dropped off the bottom', about.indexOf('<b>V5</b>') === -1);
     // The amber set is kept in the stylesheet on purpose — it is the one-edit
     // route back if the two apps ever do get confused on a job.
     //

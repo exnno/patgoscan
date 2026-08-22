@@ -370,4 +370,198 @@ module.exports = function (app) {
     app.fn('closeSheet')();
     vv.reset();
   });
+
+  // -------------------------------------------------------------------------
+  // V9 — SCAN-TO-MOVE
+  //
+  // ⚠ THE FAILURE MODE THESE EXIST FOR is not "the item did not move". It is an
+  // ARM THAT OUTLIVES ITS SCAN. The log screen already consumed barcodes before
+  // V9 — they went into the search box — so a move arm left set after use, or
+  // carried onto another screen, does not fail loudly: it silently takes the
+  // NEXT barcode the engineer scans and files an item somewhere they never
+  // asked for. Every group below ends by asserting the app is disarmed,
+  // including the ones where the move was refused.
+  //
+  // ⚠ AND THEY GO THROUGH document. F.burst dispatches keydowns the way the
+  // browser does, so a build where initScanner() never ran, or where the log
+  // screen never routes to the move grammar, fails here. Calling routeScan()
+  // directly would pass on both.
+  // -------------------------------------------------------------------------
+
+  // The state a real move starts from: two locations, an item in the first, the
+  // app on the log with the scanner live and its search box in the DOM.
+  function onLogReadyToMove() {
+    const built = twoLocationsAndAnItem();
+    const st = app.state();
+    st.view = 'log';
+    st.scannerEnabled = true;
+    st.welcomeSeen = true;
+    app.register('log-search');
+    return Object.assign({ st: st }, built);
+  }
+
+  function toastText() {
+    const el = app.doc.getElementById('toast');
+    return el ? String(el.textContent || '') : '';
+  }
+
+  A.group('11r the edit sheet offers Save & scan beside Change', () => {
+    // ⚠ THROUGH THE SHEET THE APP BUILT, not against the source. Both controls
+    // asserted together: the point of 3A is that scanning is an ADDITION to the
+    // picker, and a release that replaced Change with it would still be green
+    // on an assertion that only looked for the new button.
+    const { item } = onLogReadyToMove();
+    app.fn('openEditSheet')(item.id);
+    const sheet = F.openSheetEl(app);
+    A.includes('the picker is still there', sheet.innerHTML, 'ed-locchange');
+    A.includes('and scanning is offered beside it', sheet.innerHTML, 'ed-locscan');
+    A.includes('the label says the save out loud', sheet.innerHTML, 'Save &amp; scan');
+    app.fn('closeSheet')();
+  });
+
+  A.group('11s Save & scan commits the draft before it arms (3A)', () => {
+    // ⚠ THIS IS THE WHOLE OF DECISION 3A AND IT IS THE EASIEST THING HERE TO
+    // GET WRONG. Arming closes the sheet, and closing the sheet destroys the
+    // draft — so an implementation that armed WITHOUT saving would lose the
+    // description typed seconds earlier and lose it silently, which is the
+    // exact bug V4 and V5 kept extending snapshot() to prevent.
+    const { item } = onLogReadyToMove();
+    app.fn('openEditSheet')(item.id);
+    const sheet = F.openSheetEl(app);
+    sheet.querySelector('#ed-desc').value = 'Toaster';
+    sheet.querySelector('#ed-locscan').onclick();
+
+    const after = app.fn('recordById')(item.id);
+    A.eq('the typed description was saved', after.description, 'Toaster');
+    A.eq('and the app is armed with that item', app.state().moveArmed, item.id);
+    A.eq('on the log, where the banner is', app.state().view, 'log');
+    A.ok('with the sheet closed', !app.fn('sheetIsOpen')());
+  });
+
+  A.group('11t the banner names the item and cancels the arm', () => {
+    const { item } = onLogReadyToMove();
+    app.fn('armMove')(item.id);
+    const html = app.fn('renderMoveBar')();
+    A.includes('it names the asset being moved', html, item.code);
+    A.includes('the whole banner is the cancel target', html, 'data-action="cancelMove"');
+
+    // Through the registry the delegated listener reads, not by hand.
+    // ⚠ app.val(), NOT app.fn() — ACTIONS is a top-level const, so it reaches
+    // the harness through the loader's bridge rather than off the vm global.
+    app.val('ACTIONS').cancelMove();
+    A.eq('cancelling disarms', app.state().moveArmed, '');
+    A.eq('and the banner goes', app.fn('renderMoveBar')(), '');
+  });
+
+  A.group('11u a scan on the log moves the item — id AND code', () => {
+    const { item, corridor } = onLogReadyToMove();
+    app.fn('armMove')(item.id);
+    app.register('log-search');
+    F.burst(app, corridor.code);
+
+    const after = app.fn('recordById')(item.id);
+    A.eq('the pointer moved', after.locationId, corridor.id);
+    // ⚠ BOTH FIELDS, ALWAYS — the silent half of a move is the id changing
+    // without the code, which reads correctly on screen and exports wrong.
+    A.eq('and so did the copy the client reads', after.locationCode, corridor.code);
+    A.eq('the arm is spent', app.state().moveArmed, '');
+    A.includes('and it says where it went', toastText(), 'Corridor');
+  });
+
+  A.group('11v the arm is one-shot — the next scan is a search again', () => {
+    // ⚠ THE GROUP THIS FILE'S V9 SECTION EXISTS FOR. Two bursts, one arm. If
+    // the second is still read as a destination the item moves twice, and on a
+    // real phone the second barcode is whatever the engineer scans next.
+    const { item, kitchen, corridor } = onLogReadyToMove();
+    app.fn('armMove')(item.id);
+    app.register('log-search');
+    F.burst(app, corridor.code);
+    F.burst(app, kitchen.code);
+
+    const after = app.fn('recordById')(item.id);
+    A.eq('it stayed where the first scan put it', after.locationId, corridor.id);
+    A.notEq('it did not follow the second barcode', after.locationId, kitchen.id);
+    // The second burst went where an unarmed log burst has always gone.
+    A.eq('the second scan reached the search box', app.state().logSearch, kitchen.code);
+  });
+
+  A.group('11w a destination that is not a location is refused (4A)', () => {
+    // The accident this protects against is an ASSET barcode scanned at the
+    // move prompt. Refusing means it cannot quietly become a location record.
+    const { item, kitchen } = onLogReadyToMove();
+    const before = app.fn('recordById')(item.id).locationId;
+    app.fn('armMove')(item.id);
+    app.register('log-search');
+    const locsBefore = app.state().records.filter(r => r.type === 'location').length;
+    F.burst(app, 'NOT-A-ROOM');
+
+    const after = app.fn('recordById')(item.id);
+    A.eq('the item did not move', after.locationId, before);
+    A.eq('it is still where it was', after.locationId, kitchen.id);
+    A.eq('⚠ and nothing was created to receive it',
+      app.state().records.filter(r => r.type === 'location').length, locsBefore);
+    A.eq('the arm is spent even though it refused', app.state().moveArmed, '');
+    A.includes('and it says why', toastText(), 'not a location in this session');
+  });
+
+  A.group('11x a scan cannot move an item across sessions', () => {
+    // ⚠ THE RULE THAT PROTECTS THE CLIENT'S FILE RATHER THAN THE ENGINEER'S
+    // PATIENCE. The log shows every session, so the edit sheet opens on records
+    // from batches that are not the one being scanned into. Pointing one at
+    // today's location would export an item under a location its own file does
+    // not contain.
+    const { item } = onLogReadyToMove();
+    const before = app.fn('recordById')(item.id).locationId;
+    app.fn('armMove')(item.id);
+
+    // A fresh session, and a location inside it — the app's own writers.
+    const other = app.fn('createSession')('Another job');
+    app.fn('switchToSession')(other.id);
+    const elsewhere = app.fn('addLocationRecord')('LOC-NEW', app.val('MODE_AUDIT'), null);
+    app.state().view = 'log';
+    app.state().moveArmed = item.id;
+    app.register('log-search');
+    F.burst(app, elsewhere.code);
+
+    const after = app.fn('recordById')(item.id);
+    A.eq('it did not move', after.locationId, before);
+    A.notEq('and certainly not into the new session', after.locationId, elsewhere.id);
+    A.eq('the arm is spent', app.state().moveArmed, '');
+    A.includes('and it says which rule stopped it', toastText(), 'another session');
+  });
+
+  A.group('11y navigating away disarms', () => {
+    // ⚠ AN ARM THAT SURVIVES NAVIGATION IS AN INVISIBLE ARM. The banner only
+    // exists on the log; anywhere else the engineer has nothing telling them
+    // the next barcode means something unusual.
+    const { item } = onLogReadyToMove();
+    app.fn('armMove')(item.id);
+    A.eq('armed', app.state().moveArmed, item.id);
+    app.fn('setView')('scan');
+    A.eq('and disarmed by the walk to another screen', app.state().moveArmed, '');
+  });
+
+  A.group('11z the same barcode twice is a no-op, not a rewrite', () => {
+    const { item, kitchen } = onLogReadyToMove();
+    const stampBefore = app.fn('recordById')(item.id).ts;
+    app.fn('armMove')(item.id);
+    app.register('log-search');
+    F.burst(app, kitchen.code);
+
+    const after = app.fn('recordById')(item.id);
+    A.eq('still in the kitchen', after.locationId, kitchen.id);
+    A.eq('⚠ and the timestamp was left alone', after.ts, stampBefore);
+    A.includes('it says so rather than claiming a move', toastText(), 'already at');
+    A.eq('the arm is spent', app.state().moveArmed, '');
+  });
+
+  A.group('11aa the banner disappears with the record it names', () => {
+    // A banner naming a deleted item would invite a walk to a room to scan a
+    // label for something that is not there any more.
+    const { item } = onLogReadyToMove();
+    app.fn('armMove')(item.id);
+    app.fn('deleteRecord')(item.id);
+    A.eq('nothing to show', app.fn('renderMoveBar')(), '');
+    A.eq('and the arm went with it', app.state().moveArmed, '');
+  });
 };
