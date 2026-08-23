@@ -1,4 +1,4 @@
-# PATGo Scan — Code Map (V11)
+# PATGo Scan — Code Map (V12)
 
 Routing only: which concern lives in which file, and the cross-file couplings
 you cannot discover by reading one file. Read this to decide *what to open*.
@@ -91,7 +91,55 @@ you cannot discover by reading one file. Read this to decide *what to open*.
     version and it is the wrong one — it moves the end of the range, so the last
     id in the run is one nobody held a label against.
 
-15. **Two independent scanner ceilings, not one.** The gap preset judges a
+15. **⚠⚠ V12 — THE LOG IS THE CURRENT SESSION AND NOTHING ELSE (5B).**
+    `renderLogListHTML()` filters on `inCurrentSession`. The list, the totals
+    strip and the Log tab badge now all count the same work — before V12 they
+    counted three different things on one screen. ⚠ The consequence, stated
+    plainly because it is the cost of the decision: **another session's records
+    cannot be reached by tapping.** The route is Sessions → *Work in this*
+    (Reopen first if closed) → correct it → switch back, and the empty/no-match
+    copy says so on screen (8A).
+    ⚠ **V10 IS DELIBERATELY LEFT WHOLE AND UNREACHABLE-BY-TAP.**
+    `openEditSheet()`'s out-of-session branch and `locationChoices(max,
+    sessionId)` still run and are still correct; nothing can currently open a
+    sheet on an out-of-session record. Do **not** tidy them away — a hard-scoped
+    log makes a "view a past session" screen *more* likely to be wanted, and
+    that branch is what stops the picker offering today's rooms for last week's
+    item. Harness 17d guards the behaviour so removal is a decision, not a
+    mutation quietly reporting SKIPPED.
+
+16. **⚠ V12 — THERE ARE TWO UNEXPORTED COUNTS AND MERGING THEM IS A BUG.**
+    `unexportedCount()` is the **current session** — the Log tab badge, the
+    export nudge, the Settings row: everything meaning *what will exporting
+    send*, and export has been session-scoped since V7.
+    `unexportedCountAllSessions()` is the **whole phone** — the clear guard
+    (clearing destroys every session) and the diagnostics dump, and nothing
+    else. ⚠ They agree on a handset holding one session, which is most handsets
+    most days, so a merge looks correct until the day two engineers' work is on
+    one phone. `phoneTotals()` is the same global pass and exists partly so the
+    clear guard's number is visible somewhere (Sessions screen, 12A/13A) —
+    being refused by a number that appears on no screen is being refused by
+    nothing you can act on. Harness 14c5, mutations M196/M201.
+
+17. **⚠ V12 — `byNewest()` TIEBREAKS ON THE CODE, NUMERICALLY, BEFORE THE ID.**
+    A run is written in one synchronous loop, so its records usually share a
+    millisecond and the tiebreak decides their order; the old id fallback is six
+    random base-36 characters, so a run came back shuffled afresh on every
+    commit. The compare is numeric via `splitTrailingNumber()` because a run
+    that grows its padding (`PAT-998` ×5) mixes code widths and a string compare
+    puts `999` above `1002`. ⚠ **The export never used this and must not start
+    to** — `recordsForExport()` sorts ascending by `ts` and relies on sort
+    stability. Two comparators, two jobs. Harness 17s–17u, mutations M197/M198.
+
+18. **⚠ V12 — `state.lastRun` IS THE ONE TRANSIENT BESIDES `pending` THAT
+    SURVIVES `setView()`,** and `state.logSelect` is not. Getting either
+    backwards is silent: select mode carried across leaves a log where tapping a
+    row opens nothing, and a receipt cleared on navigation takes the batch undo
+    away on the exact trip that finds the mistake (commit the run, check the
+    log, come back). This is a deliberate exception to rule 4. Harness 17p,
+    mutations M193/M194.
+
+19. **Two independent scanner ceilings, not one.** The gap preset judges a
     burst; `scanEndMs()` decides where one burst ends and the next begins. The
     second must always exceed the first, which is why it is derived from it and
     not a constant. Raising a preset alone re-caps at the boundary.

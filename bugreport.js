@@ -101,7 +101,11 @@ function _diagnostics() {
     'App: PATGo Scan ' + APP_VERSION,
     'Screen: ' + state.view,
     'Mode: ' + state.mode,
-    'Records: ' + state.records.length + ' (' + unexportedCount() + ' unexported)',
+    // ⚠ V12 — ALL SESSIONS. This line describes the handset, and it sits beside
+    // state.records.length, which is every record on it. A session-scoped
+    // number next to a global one is a diagnostics dump that quietly disagrees
+    // with itself in the one place nobody can ask a follow-up question.
+    'Records: ' + state.records.length + ' (' + unexportedCountAllSessions() + ' unexported)',
     'Today: ' + counts.pass + ' pass, ' + counts.fail + ' fail, ' + counts.locations + ' locations',
     'Location set: ' + (currentLocation() ? 'yes' : 'no'),
     'Scanner: ' + (state.scannerEnabled ? 'on' : 'off') +

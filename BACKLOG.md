@@ -10,6 +10,74 @@ things worth considering when the client's actual working day suggests them.
 
 *(Nothing outstanding. Both long-running questions closed in V6.)*
 
+## Closed in V12
+
+- **~~A run has no undo.~~** ✅ SHIPPED V12 (6A), and **the V11 note was half
+  wrong in a way worth keeping written down.** It said a batch undo and a
+  multi-move were the same ask because both needed a selection mechanism.
+  Undoing the run you *just committed* needs no selection at all: `addItemRun()`
+  hands back the records it wrote, so the app is holding those ids at the moment
+  it writes them. The receipt (`state.lastRun`) is one transient and one label —
+  Undo reads **Undo all 6** while the run stands. ⚠ SELECTION ALONE WOULD HAVE
+  BEEN A POOR ANSWER TO THIS: twenty rows is still twenty taps, because nothing
+  on a record says "these six were one run" (V11 decision 6A declined to stamp
+  one, and V12 did not revisit it).
+- **~~The log has no way to act on several rows at once.~~** ✅ SHIPPED V12
+  (2A/3A/4A). **Select** in the log ticks items and removes them together.
+  Items only — a location delete runs the `locationId` sweep, and at batch scale
+  that consequence is invisible. **Select all** is scoped to what the search is
+  showing and carries the count in its label, because the number is the safety
+  feature: the log holds a whole session, and an unlabelled "all" over a filtered
+  list means whatever the box a thumb is covering says. ⚠ MULTI-MOVE IS STILL
+  NOT BUILT — see "Raised in V12".
+- **~~The log screen disagreed with itself about what a session is.~~** ✅ FIXED
+  V12 (5B). The list showed every session, the totals strip counted one and
+  called itself "all time", and the tab badge counted the phone — three scopes
+  on one screen. All three now mean the current session; the phone-wide figures
+  moved to a line under the sessions list (12A/13A). ⚠ THE COST IS REAL AND IS
+  STATED ON SCREEN: another session's records can no longer be reached by
+  tapping. Sessions → Work in this → correct it → switch back.
+- **~~A committed run read back shuffled in the log.~~** ✅ FIXED V12 (7A). Six
+  records written in one loop share a millisecond, and `byNewest()` fell through
+  to the id — six random base-36 characters — so a run came back in a different
+  order every time. Numeric tiebreak on the code now. ⚠ THE EXPORT WAS NEVER
+  AFFECTED and must not be brought into it: `csv.js` sorts ascending by `ts` and
+  relies on stability. Two comparators, two jobs.
+
+## Raised in V12
+
+- **⚠ MOVING SEVERAL ITEMS AT ONCE IS STILL NOT BUILT, AND THE SELECTION NOW
+  EXISTS TO DO IT WITH.** Deliberately held back: a multi-move has to answer the
+  V10 question — which session's locations does the picker offer when the
+  selection could in principle span sessions — and V12's hard scope means it
+  cannot, which makes the answer *look* free. It is not free the day a "view a
+  past session" screen arrives. Spec the picker's session explicitly when this
+  is built; do not inherit it from "the log is the current session".
+- **⚠ THE ONLY WAY TO CORRECT ANOTHER SESSION'S RECORD IS TO SWITCH INTO IT.**
+  This is the accepted cost of 5B, not an oversight, and V10's out-of-session
+  edit paths are kept whole and unreachable-by-tap against the day it wants
+  answering properly — a **view a past session** screen, read-only or otherwise.
+  Watch whether it bites before building it.
+- **⚠ A TEST WHOSE COVERAGE DEPENDED ON MACHINE SPEED.** 17s asserted a run
+  sorts in order, and passed with the numeric compare disabled — because that
+  particular six-item run had straddled two milliseconds, so the tiebreak never
+  ran. Caught only because mutation M198 survived. The stamps are now forced
+  equal in the fixture-facing groups. **This is the sixth documented way this
+  suite has reported something other than what it was testing**, after wrong
+  selector, wrong text, wrong edit, wrong stub and leaked output: **accidental
+  coverage.**
+- **⚠ FIVE MUTATIONS WENT STALE IN ONE RELEASE AND THE RUN STILL SAID "0
+  SURVIVED".** M03, M49, M157, M161 and M168 all reported SKIPPED against V12's
+  edits — their anchor text had moved — and skipped is not caught. The runner
+  already exits non-zero on a skip; the lesson is that **a release touching a
+  file must re-read every mutation anchored in it**, not just add new ones.
+- **⚠ AN ASSERTION GUARDED THE WRONG FACT SO FAITHFULLY IT PRESERVED A BUG.**
+  13p asserted the log totals strip said "all time" — which it did, and which
+  had been untrue since V7 when `logTotals()` was scoped to the session. The
+  test kept a four-release-old lie on screen by testing it. ⚠ WHEN A LABEL AND
+  THE FUNCTION BEHIND IT ARE ASSERTED SEPARATELY, ASSERT THAT THEY AGREE — the
+  strip now asserts the session name *and* that the old words are gone.
+
 ## Closed in V11
 
 - **~~Batch initials.~~** ✅ SHIPPED V11, and it is **the first time this app has
@@ -39,6 +107,9 @@ things worth considering when the client's actual working day suggests them.
 
 ## Raised in V11
 
+- **~~⚠ A RUN HAS NO UNDO.~~** ✅ ANSWERED V12 — see "Closed in V12". The note
+  was right that it would bite and wrong about what it needed; the correction is
+  written up there. Original text kept below.
 - **⚠ A RUN HAS NO UNDO.** Undo on the last-item block removes ONE item, so
   correcting a wrongly-committed run of twenty means twenty deletions from the
   log. Deliberately not built: a batch undo needs a selection mechanism the log

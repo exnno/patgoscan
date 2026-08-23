@@ -93,6 +93,39 @@ let state = {
   // trap in armMove() (dispatch.js): arming BEFORE navigating silently disarms.
   moveArmed: '',
 
+  // V12 — logSelect: the log's selection mode. `null` means the mode is OFF;
+  // an ARRAY means it is on, and holds the ids ticked so far — so an empty
+  // array is "selecting, nothing chosen yet".
+  //
+  // ⚠ ONE FIELD HOLDS BOTH FACTS FOR THE SAME REASON moveArmed HOLDS AN ID
+  // RATHER THAN A FLAG. A boolean plus a list is a state that can be half-set:
+  // a selection left behind after the mode closes, or a mode open with a stale
+  // list under it. One field cannot disagree with itself.
+  //
+  // ⚠ IT IS CLEARED BY setView(), like locationArmed and moveArmed. Select mode
+  // changes what tapping a row DOES — ticking it rather than opening it — and a
+  // mode that alters a row's meaning must not survive leaving the screen that
+  // explains it.
+  logSelect: null,           // null | [ids]
+
+  // V12 — lastRun: the receipt for the run just committed.
+  //   { ids: [...], count: n, code: 'PAT-0998' }
+  //
+  // ⚠ IT IS WHAT MAKES A BATCH UNDO POSSIBLE AT ALL. Nothing on a record says
+  // "these six were one run" — decision 6A in V11 deliberately declined to
+  // stamp one — so once this is gone the six are only six items that happen to
+  // share a description. addItemRun() hands back exactly what it wrote, so this
+  // needs no field on the data and no guessing after the fact.
+  //
+  // ⚠ IT IS NOT CLEARED BY setView(), AND THAT IS DELIBERATE — the one
+  // transient besides `pending` that survives navigation. The realistic way a
+  // bad run is caught is: commit it, tap Log to check it wrote correctly, see
+  // that it did not, come back. Clearing on navigation would take the offer
+  // away on exactly the trip that discovers the mistake. It is safe to carry
+  // because it changes nothing invisible: it alters one label on one block that
+  // is only drawn when the run's records are all still on file.
+  lastRun: null,
+
   // pending: an asset has been scanned but no result recorded yet. This is the
   // half-finished record sitting on the screen with PASS/FAIL waiting. It is
   // deliberately NOT in `records` — an item with no result is not data, and

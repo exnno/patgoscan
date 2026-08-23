@@ -261,6 +261,49 @@ li { margin-bottom: 8px; }
 .movebar-label { font-weight: 650; }
 .movebar-hint { font-size: 13px; color: rgba(255,255,255,.85); }
 
+/* @@ V12 log selection ---------------------------------------------------- */
+/* The bar above the search box. Off, it is a quiet line naming the session and
+   offering Select; on, it counts and offers Select all / Clear / Done.
+
+   ⚠ DELIBERATELY NOT SHOUTED THE WAY .movebar IS. The move bar pulses in accent
+   because an arm changes what the NEXT BARCODE does — an invisible state with a
+   scanner pointed at it. Select mode changes what a TAP does, which the ticks
+   on the rows show directly, so it needs to be legible rather than loud. */
+.selbar {
+  display: flex; align-items: center; gap: 10px;
+  min-height: var(--tap); padding: 4px 2px; margin-bottom: 4px;
+  font-size: 14px; color: var(--ink-soft);
+}
+.selbar-label { flex: 1; font-weight: 600; overflow: hidden;
+                text-overflow: ellipsis; white-space: nowrap; }
+.selbar.is-on .selbar-label { color: var(--ink); }
+
+/* ⚠ NO SAFE-AREA INSET HERE. This sits directly above .nav, which already
+   carries `padding-bottom: env(safe-area-inset-bottom)` — the inset belongs to
+   whatever is genuinely at the bottom edge and nothing else. Claiming it in a
+   second place is precisely the double-count V8 spent a release removing; see
+   the note at the top of this file. */
+.selacts {
+  position: sticky; bottom: 0; z-index: 19;
+  padding: 8px 16px; border-top: 1px solid var(--line); background: var(--bg);
+}
+
+/* The tick column. ⚠ IT IS DRAWN, NOT AN <input>: a checkbox nested inside the
+   row's <button> is invalid markup and iOS then decides for itself which of the
+   two a thumb hit. The row keeps its own left padding shifted to make room, so
+   nothing under the tick moves when the mode opens — a list that jumps sideways
+   as you enter select mode makes the first tap land on the wrong row. */
+.row-item.is-selectable { padding-left: 44px; }
+.row-tick {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 22px; height: 22px; border-radius: 6px;
+  border: 1px solid var(--line); background: var(--bg);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; line-height: 1; color: #fff;
+}
+.row-item.is-picked { border-color: var(--accent); }
+.row-item.is-picked .row-tick { background: var(--accent); border-color: var(--accent); }
+
 /* @@ toggles (V5) -------------------------------------------------------- */
 /* The two persistent switches, on their own rows beneath the location bar.
    They apply in BOTH modes, which is why they are not part of the mode switch.
@@ -553,6 +596,13 @@ li { margin-bottom: 8px; }
    because a heading is not guaranteed to be there next time. */
 .rowline + .row,
 .rowline + .sec { margin-top: 18px; }
+
+/* V12 (12A/13A) — the phone-wide total under the sessions list. Quieter than a
+   session row because it is a footnote to them, not another one of them. */
+.phonetotals {
+  margin: 10px 0 0; font-size: 13px; color: var(--ink-soft); line-height: 1.5;
+}
+.phonetotals b { color: var(--ink); font-weight: 650; }
 
 /* @@ forms -------------------------------------------------------------- */
 .field {

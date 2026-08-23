@@ -213,6 +213,24 @@ function commitResult(result, failReason) {
 
   state.pending = null;
   state._pendingReplaceId = '';
+  // V12 (6A) — THE RECEIPT, WRITTEN ON EVERY PATH THROUGH THIS FUNCTION.
+  //
+  // ⚠ SET ON THE RUN BRANCH AND CLEARED ON BOTH OTHERS, rather than only set
+  // where it is needed. The offer on the scan screen means "the last thing you
+  // committed was these six" — so a single scan or a replace after a run has to
+  // take it down, or the block would still be offering to undo six items with a
+  // seventh, unrelated one sitting above the button. Clearing here rather than
+  // in renderLastItem() keeps the receipt a fact about what was written, not a
+  // thing the screen maintains.
+  //
+  // ⚠ IT HOLDS THE IDS addItemRun() ACTUALLY RETURNED, not the codes the run
+  // was asked for. Those are the same today, and storing what was written means
+  // they cannot drift apart tomorrow.
+  if (rec && pending.count > 1 && rec.length) {
+    state.lastRun = { ids: rec.map(r => r.id), count: rec.length, code: pending.code };
+  } else {
+    state.lastRun = null;
+  }
   if (rec) feedback(result);
   // ⚠ A RUN SAYS HOW MANY IT WROTE, AND A SINGLE SCAN STAYS SILENT. Six records
   // appearing at once is the one commit in this app whose size is not obvious
@@ -321,6 +339,70 @@ const ACTIONS = {
 
   editRecord: (arg) => openEditSheet(arg),
 
+  // --- V12: the log's selection (2A, 3A, 4A) --------------------------------
+  //
+  // ⚠ EVERY ONE OF THESE RE-RENDERS THE WHOLE SCREEN, not just the list.
+  // refreshLogListOnly() exists so a search keystroke does not steal the search
+  // box's focus; a tick changes the header count and whether the action bar is
+  // there at all, so repainting the list alone would leave "3 selected" over
+  // four ticked rows.
+  startSelect: () => { state.logSelect = []; render(); },
+
+  // ⚠ CANCEL DROPS THE MODE AND THE PICKS TOGETHER, because they are one field.
+  // Nothing is deleted by leaving select mode — the only destructive step in
+  // the whole flow is deleteSelected below, behind a confirm.
+  cancelSelect: () => { state.logSelect = null; render(); },
+  selectNone: () => { if (state.logSelect) state.logSelect = []; render(); },
+
+  toggleSelect: (arg) => {
+    if (!state.logSelect) return;
+    const i = state.logSelect.indexOf(arg);
+    if (i === -1) state.logSelect.push(arg);
+    else state.logSelect.splice(i, 1);
+    render();
+  },
+
+  // ⚠ IT TICKS WHAT IS SHOWN, AND IT ADDS RATHER THAN REPLACES. An engineer who
+  // has ticked three rows, searched for something else and tapped Select all
+  // means "these too" — throwing the first three away because the filter moved
+  // would silently undo work that is still counted in the header.
+  selectAllShown: () => {
+    if (!state.logSelect) return;
+    const ids = selectableShownIds();
+    for (let i = 0; i < ids.length; i++) {
+      if (state.logSelect.indexOf(ids[i]) === -1) state.logSelect.push(ids[i]);
+    }
+    render();
+  },
+
+  // ⚠ THE CONFIRM NAMES THE NUMBER AND NOTHING ELSE NAMES THE ROWS. There is no
+  // list in the sheet on purpose: twenty codes in a confirm is a wall of text
+  // nobody reads, and the ticks are still on screen behind it.
+  //
+  // ⚠ IT REPORTS WHAT deleteRecords() ACTUALLY REMOVED. An id can go between
+  // the tick and the tap, and a toast that says six when five happened is the
+  // app telling the engineer something it does not know to be true.
+  deleteSelected: () => {
+    const sel = state.logSelect || [];
+    if (!sel.length) return;
+    const ids = sel.slice();
+    openConfirmSheet({
+      title: 'Delete ' + ids.length + ' item' + (ids.length === 1 ? '' : 's') + '?',
+      body: 'They will be removed from the log and from any future export. Scan them again to record them afresh.',
+      confirmLabel: 'Delete', danger: true,
+      onConfirm: () => {
+        const n = deleteRecords(ids);
+        // ⚠ THE MODE CLOSES WITH THE DELETE. Leaving it open over a list the
+        // rows have just left gives an empty selection bar and a "Select all"
+        // whose number has changed under the thumb.
+        state.logSelect = null;
+        showToast('Removed ' + n + ' item' + (n === 1 ? '' : 's'));
+        render();
+      },
+      onCancel: () => render(),
+    });
+  },
+
   // V6 (13D) — the last item quick view. ⚠ THE WHOLE FEATURE'S DISPATCH SURFACE
   // IS THESE TWO ENTRIES. Nothing else calls them; removing the block means
   // removing them and renderLastItem() and the CSS, and nothing else.
@@ -334,7 +416,32 @@ const ACTIONS = {
     openEditSheet(rec.id);
   },
 
+  // ⚠ V12 — ONE ACTION, TWO SIZES. The button's label already told the engineer
+  // which one it is (renderLastItem), so the handler asks the same question the
+  // label answered rather than keeping a second entry point that could disagree
+  // with it.
   undoLastItem: () => {
+    const run = activeRun();
+    if (run) {
+      openConfirmSheet({
+        title: 'Undo all ' + run.ids.length + '?',
+        // ⚠ THE FIRST CODE IS NAMED. "Undo all 6" on its own is a number with
+        // nothing to check it against — an engineer who has walked to the next
+        // room needs to recognise the run before removing it, and the code they
+        // scanned is what they remember.
+        body: 'All ' + run.ids.length + ' items recorded from ' + run.code +
+              ' will be removed from the log and from any future export. Nothing else is touched.',
+        confirmLabel: 'Undo all', danger: true,
+        onConfirm: () => {
+          const n = deleteRecords(run.ids);
+          state.lastRun = null;
+          showToast('Removed ' + n + ' items');
+          render();
+        },
+        onCancel: () => render(),
+      });
+      return;
+    }
     const rec = lastItemRecord();
     if (!rec) { showToast('Nothing recorded yet'); return; }
     openConfirmSheet({

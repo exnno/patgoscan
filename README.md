@@ -6,7 +6,7 @@ no asset register and cross-references nothing — it records what the engineer
 did, and the client's own software reconciles it.
 
 **Live:** <https://exnno.github.io/patgoscan/>
-**Current version:** `V11` · cache `scan-v11` · backup format `3`
+**Current version:** `V12` · cache `scan-v12` · backup format `3`
 
 > ⚠ **This is not PATGo.** PATGo (`exnno/pat-test-app`, cache `pat-vNN`) is the
 > general product; this is a separate app in a separate repo for a single

@@ -45,6 +45,17 @@ function setView(v) {
   // is the worst shape a bug can take in this app — a scan that goes somewhere
   // the engineer did not ask for, with nothing on screen to have warned them.
   state.moveArmed = '';
+  // V12. ⚠ SELECT MODE DIES WITH THE SCREEN, for the same reason the move arm
+  // does: while it is on, tapping a row TICKS it rather than opening it, and a
+  // mode that changes what a tap means must not outlive the bar that explains
+  // it. Carried away and back, an engineer would return to a log where the
+  // correction path silently no longer opens anything.
+  //
+  // ⚠ state.lastRun IS NOT CLEARED HERE, AND THAT IS DELIBERATE — see the note
+  // on it in state.js. Commit a run, tap Log to check it landed, come back: on
+  // that trip the receipt is the whole point, and clearing here would take it
+  // away on exactly the journey that finds the mistake.
+  state.logSelect = null;
   closeSheet();
   render();
 }
@@ -336,9 +347,24 @@ function renderScan() {
 // record in question is the last one, and shipping both would be two buttons
 // that do one thing — the engineer would have to work out which. Undo removes
 // it; Edit opens the same sheet the log uses.
+// ⚠ V12 (6A) — UNDO BECOMES "Undo all 6" WHILE A RUN IS THE LAST THING WRITTEN.
+// A run is the one commit in this app whose size is not visible afterwards: the
+// block shows the LAST id of six and the counts have moved by an amount nobody
+// watched. Undoing it one at a time was twenty rows × three taps, which is not
+// a correction path, it is a punishment.
+//
+// ⚠ NO NEW ROW, AND THAT IS THE POINT. V8 cut this block from ~141px to ~58px
+// to get it above the fold on a 17 Pro; the batch undo is a LABEL on a button
+// that already exists. Do not give the run its own line here — the scan screen
+// has a measured height budget and this block spends none of it.
+//
+// ⚠ IT IS NOT ON THE TOAST. The toast that says "6 items recorded" fades, and a
+// destructive control that has to be caught is one an engineer will reach for
+// as it disappears. Nothing else in this app is operated by tapping a toast.
 function renderLastItem() {
   const rec = lastItemRecord();
   if (!rec) return '';
+  const run = activeRun();
   const bits = [rec.description, rec.cls ? 'Class ' + rec.cls : '',
     rec.visual === true ? 'Visual' : '']
     .filter(isNonEmptyString).join(' · ');
@@ -360,7 +386,8 @@ function renderLastItem() {
       <span class="lastitem-result is-${escapeHTML(rec.result || 'none')}">${escapeHTML((rec.result || '').toUpperCase())}</span>
       <div class="lastitem-acts">
         <button type="button" class="linkbtn" data-action="editLastItem">Edit</button>
-        <button type="button" class="linkbtn is-danger" data-action="undoLastItem">Undo</button>
+        <button type="button" class="linkbtn is-danger" data-action="undoLastItem">${
+          run ? 'Undo all ' + run.ids.length : 'Undo'}</button>
       </div>
     </div>
     ${bits ? `<span class="lastitem-sub">${escapeHTML(bits)}</span>` : ''}
@@ -371,18 +398,78 @@ function renderLastItem() {
 // THE LOG — the correction path (decision 5)
 // ---------------------------------------------------------------------------
 function renderLog() {
+  const sel = state.logSelect;
   return `
   <div class="screen">
     ${renderHeader('Log')}
     <main class="main">
       ${renderMoveBar()}
+      ${renderSelectBar()}
       <input type="text" id="log-search" class="field" placeholder="Search asset or location"
              autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
              data-input-action="logSearch" value="${escapeHTML(state.logSearch)}">
       ${renderLogTotals()}
       <div id="log-list">${renderLogListHTML()}</div>
     </main>
+    ${sel ? renderSelectActions() : ''}
     ${renderNav('log')}
+  </div>`;
+}
+
+// V12 (2A) — entering and leaving select mode.
+//
+// ⚠ A STANDING BUTTON, NOT A LONG-PRESS. A long-press is invisible — there is
+// nothing on the screen that could teach it — and on iOS it fights the
+// browser's own press-and-hold behaviour on a <button>, which needs
+// -webkit-touch-callout suppressing and still varies by version. A control that
+// says "Select" cannot be undiscoverable and cannot be triggered by a thumb
+// resting on a row while reading.
+//
+// ⚠ IT SITS ABOVE THE SEARCH BOX FOR THE SAME REASON THE MOVE BAR DOES: while
+// select mode is on, tapping a row TICKS it instead of opening it, and the
+// notice saying so belongs above the list whose behaviour has changed.
+//
+// ⚠ NOTHING TO SELECT, NO CONTROL. On an empty session the button would open a
+// mode over nothing and offer a Select all of none.
+function renderSelectBar() {
+  const sel = state.logSelect;
+  const shown = selectableShownIds();
+  if (!sel) {
+    if (!shown.length) return '';
+    return `
+    <div class="selbar">
+      <span class="selbar-label">${escapeHTML(currentSessionName())}</span>
+      <button type="button" class="linkbtn" data-action="startSelect">Select</button>
+    </div>`;
+  }
+  // ⚠ THE SELECT ALL LABEL CARRIES THE NUMBER AND THE WORD "shown", because the
+  // number IS the safety feature (4A). It ticks what the search has filtered
+  // to, never the session — and a bare "Select all" over a filtered list is a
+  // button whose meaning depends on a box the thumb is covering.
+  const all = shown.length && shown.every(id => sel.indexOf(id) !== -1);
+  return `
+  <div class="selbar is-on">
+    <span class="selbar-label">${sel.length} selected</span>
+    <button type="button" class="linkbtn" data-action="${all ? 'selectNone' : 'selectAllShown'}">${
+      all ? 'Clear' : 'Select all ' + shown.length + ' shown'}</button>
+    <button type="button" class="linkbtn" data-action="cancelSelect">Done</button>
+  </div>`;
+}
+
+// ⚠ THE ACTION BAR SITS ABOVE .nav AND CARRIES NO SAFE-AREA INSET. The inset
+// belongs to whatever is actually at the bottom edge, and that is still the nav
+// — see the note at the top of styles.css about V8's double-counted inset. A
+// second element claiming it here is exactly how that bug came back.
+//
+// ⚠ NOTHING TICKED, NO BAR. A greyed-out "Delete 0" is a control that looks
+// broken; the header already says "0 selected", which is the honest version of
+// the same fact.
+function renderSelectActions() {
+  const sel = state.logSelect || [];
+  if (!sel.length) return '';
+  return `
+  <div class="selacts">
+    <button type="button" class="btn btn-danger btn-wide" data-action="deleteSelected">Delete ${sel.length}</button>
   </div>`;
 }
 
@@ -407,10 +494,23 @@ function renderMoveBar() {
   </div>`;
 }
 
-// V6 (13D). ⚠ THE LABEL SAYS "ALL TIME" AND IT IS NOT DECORATION. The scan
+// V6 (13D). ⚠ THE NOTE AT THE END OF THE STRIP IS NOT DECORATION. The scan
 // screen carries a strip of the same shape holding TODAY's figures, and two
 // identical-looking strips that disagree is worse than having neither. The word
 // is what makes the difference readable.
+//
+// ⚠ V12 (9A) — IT NAMES THE SESSION, BECAUSE "all time" WAS A LIE AND HAD BEEN
+// SINCE V7. logTotals() was scoped to the current session when sessions
+// arrived; the label it was written for in V6 was not touched, so for four
+// releases this strip counted one session and called it all time. The log
+// screen was disagreeing with itself in three places at once — a list of every
+// session, a totals strip of one, and a tab badge of the whole phone. V12's
+// hard scope makes all three mean the same thing, and this is the label that
+// says which thing that is.
+//
+// ⚠ THE NAME, NOT THE WORDS "this session". The engineer has more than one, and
+// which one they are in is the fact worth a line here — it is the same
+// reasoning as the session strip on the scan screen.
 function renderLogTotals() {
   const t = logTotals();
   if (!t.total && !t.locations) return '';
@@ -419,15 +519,39 @@ function renderLogTotals() {
     <span><b>${t.pass}</b> pass</span>
     <span><b>${t.fail}</b> fail</span>
     <span><b>${t.locations}</b> locations</span>
-    <span class="counts-note">all time</span>
+    <span class="counts-note">${escapeHTML(currentSessionName())}</span>
   </div>`;
 }
 
+// V12 (5B) — THE ROWS THIS SCREEN SHOWS: THE CURRENT SESSION, AND NOTHING ELSE.
+//
+// ⚠ THIS IS THE CHANGE THE REST OF V12 HANGS OFF. Until now the list showed
+// every record on the phone while the totals strip counted one session and the
+// tab badge counted the phone — three scopes on one screen, which is how a
+// search for "kettle" returned Dave's kettle from a session this handset will
+// never export. A batch delete over that list would have been a batch delete
+// across sessions with nothing on any row saying so.
+//
+// ⚠ WHAT IT COSTS, SAID PLAINLY: another session's records can no longer be
+// reached by tapping. The route is Sessions → Work in this (Reopen first if it
+// is closed) → fix it → switch back. That is a real cost and it is why the
+// empty and no-match copy below names it — a log that looks complete and is not
+// is worse than one that says what it is holding.
+//
+// ⚠ V10 IS DELIBERATELY LEFT WHOLE. openEditSheet()'s out-of-session branch and
+// locationChoices()' session argument are now unreachable BY TAP, and they stay
+// exactly as they are: they are correct code, not dead code, and a hard-scoped
+// log makes a "look at a past session" screen more likely to be wanted, not
+// less. The harness reaches them directly and keeps guarding them. Do not tidy
+// them away — rebuilding V10 having forgotten why it existed is the expensive
+// version of this.
+//
 // Split out so a search keystroke repaints the list ALONE. Re-rendering the
 // whole screen would take the search box's focus with it on every character.
 function renderLogListHTML() {
   const q = cleanText(state.logSearch, 60).toLowerCase();
-  let rows = state.records.slice().sort(byNewest);
+  const sel = state.logSelect;
+  let rows = state.records.filter(inCurrentSession).sort(byNewest);
   if (q) {
     rows = rows.filter(r =>
       String(r.code).toLowerCase().indexOf(q) !== -1 ||
@@ -436,10 +560,23 @@ function renderLogListHTML() {
       String(r.locationCode || '').toLowerCase().indexOf(q) !== -1);
   }
   if (!rows.length) {
-    return `<p class="muted">${q ? 'Nothing matches that.' : 'Nothing scanned yet. Everything you log appears here and can be corrected by tapping it.'}</p>`;
+    // V12 (8A) — the copy names what is NOT here. Both states now describe one
+    // session rather than the phone, and an engineer searching for yesterday's
+    // asset needs to be told where it went, not told it does not exist.
+    return `<p class="muted">${q
+      ? 'Nothing in this session matches. Other sessions are not shown here — switch to one in Sessions.'
+      : 'Nothing scanned in this session yet. Everything you log appears here and can be corrected by tapping it.'}</p>`;
   }
   return rows.map(r => {
     if (r.type === 'location') {
+      // V12 (3A) — ⚠ A LOCATION ROW IS NEVER SELECTABLE, AND IT STAYS TAPPABLE
+      // IN SELECT MODE. Deleting a location is the one delete in this app with
+      // a sweep behind it: deleteRecord() clears `locationId` off every item
+      // pointing at it, and those items need not be in the selection or even on
+      // screen. One at a time that consequence is visible — you deleted the
+      // kitchen, the kitchen's items lose their room. Twenty at a time it is
+      // invisible, and the engineer finds out at export. The row keeps opening
+      // its edit sheet so nothing that worked before stops working.
       return `
       <button type="button" class="row row-loc" data-action="editRecord" data-arg="${escapeHTML(r.id)}">
         <span class="row-main">${escapeHTML(locationLabel(r))}</span>
@@ -480,15 +617,51 @@ function renderLogListHTML() {
     // answered is one the log is the wrong place to ask. The count still lives
     // on the Log tab, in Settings and in the export nudge.
     const isInitial = r.mode === MODE_INITIAL;
+    // V12 — IN SELECT MODE THE SAME ROW DOES A DIFFERENT THING, and the element
+    // does not change to say so.
+    //
+    // ⚠ IT STAYS A <button> WITH A data-action, swapped from editRecord to
+    // toggleSelect. Putting a real <input type="checkbox"> inside would be
+    // invalid HTML — a form control nested in a button — and iOS then decides
+    // for itself which of the two a thumb landed on. The tick is drawn, and the
+    // whole row remains one 44px target either way.
+    const on = sel ? sel.indexOf(r.id) !== -1 : false;
     return `
-    <button type="button" class="row row-item is-${escapeHTML(r.result || 'none')}"
-            data-action="editRecord" data-arg="${escapeHTML(r.id)}">
+    <button type="button" class="row row-item is-${escapeHTML(r.result || 'none')}${
+      sel ? ' is-selectable' : ''}${on ? ' is-picked' : ''}"
+            data-action="${sel ? 'toggleSelect' : 'editRecord'}" data-arg="${escapeHTML(r.id)}"
+            ${sel ? `aria-pressed="${on ? 'true' : 'false'}"` : ''}>
+      ${sel ? `<span class="row-tick" aria-hidden="true">${on ? '✓' : ''}</span>` : ''}
       <span class="row-mode ${isInitial ? 'is-initial' : 'is-audit'}">${isInitial ? 'INITIAL' : 'AUDIT'}</span>
       <span class="row-main">${escapeHTML(r.code)}
         <span class="row-result">${escapeHTML((r.result || '').toUpperCase())}</span></span>
       <span class="row-sub">${escapeHTML(bits || r.mode)}${r.failReason ? ' · ' + escapeHTML(r.failReason) : ''} · ${escapeHTML(timeOfDay(r.ts))}</span>
     </button>`;
   }).join('');
+}
+
+// V12 — the ids select mode is allowed to tick RIGHT NOW: items only (3A), this
+// session only (5B), and only what the search is currently showing (4A).
+//
+// ⚠ ONE FUNCTION, USED BY BOTH THE LABEL AND THE ACTION. "Select all 12 shown"
+// and the tick that follows it must be counting the same twelve — computing the
+// number in the header and the list in the handler is how a button comes to
+// promise one thing and do another the moment the filter changes underneath it.
+function selectableShownIds() {
+  const q = cleanText(state.logSearch, 60).toLowerCase();
+  const out = [];
+  const rows = state.records.filter(inCurrentSession).sort(byNewest);
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.type !== 'item') continue;
+    if (q &&
+        String(r.code).toLowerCase().indexOf(q) === -1 &&
+        String(r.description || '').toLowerCase().indexOf(q) === -1 &&
+        String(r.room || '').toLowerCase().indexOf(q) === -1 &&
+        String(r.locationCode || '').toLowerCase().indexOf(q) === -1) continue;
+    out.push(r.id);
+  }
+  return out;
 }
 
 function refreshLogListOnly() {
@@ -758,6 +931,7 @@ function renderSessions() {
       <h2 class="sec">All sessions</h2>
       ${rows.length ? `<div class="seslist">${rows.map(row).join('')}</div>`
                     : '<p class="muted small">Nothing here yet.</p>'}
+      ${renderPhoneTotals()}
       <p class="muted small">Share sends a copy of one session to another engineer. <b>It is not a backup</b> — it holds that batch and nothing else, not your settings and not your other sessions. Settings → Export and backup is what protects the phone.</p>
 
       <h2 class="sec">From another engineer</h2>
@@ -768,6 +942,37 @@ function renderSessions() {
       <p class="muted small">This is not the same as restoring a backup. A backup replaces everything on this phone; a session is added alongside what you already have.</p>
     </main>
   </div>`;
+}
+
+// V12 (12A/13A) — the phone-wide total, under the list of its parts.
+//
+// ⚠ THIS IS WHERE "all time" WENT. The log's totals strip named a session in
+// V12 because that is all it ever counted; the number that really does span
+// everything needs somewhere to live, and under a list of sessions is where a
+// total belongs.
+//
+// ⚠ IT IS ALSO THE ONLY PLACE THE CLEAR GUARD'S NUMBER IS VISIBLE. "3 records
+// have not been exported yet" refuses the clear using
+// unexportedCountAllSessions(), and once the Log tab badge went session-scoped
+// (10A) that number appeared on no screen at all. Being blocked by a fact you
+// cannot see anywhere is being blocked by nothing you can act on.
+//
+// ⚠ "not sent" DISAPPEARS AT ZERO rather than reading "0 not sent", the same
+// way the session rows above it drop the clause. A standing zero is a number
+// that stops being read, and this line exists to be noticed on the day it is
+// not zero.
+function renderPhoneTotals() {
+  const t = phoneTotals();
+  if (!t.pass && !t.fail && !t.locations) return '';
+  const bits = [
+    t.pass + ' pass',
+    t.fail + ' fail',
+    t.locations + ' location' + (t.locations === 1 ? '' : 's'),
+    t.sessions + ' session' + (t.sessions === 1 ? '' : 's'),
+    t.unsent ? t.unsent + ' not sent' : '',
+  ].filter(isNonEmptyString).join(' · ');
+  return `
+  <p class="phonetotals"><b>Everything on this phone:</b> ${escapeHTML(bits)}</p>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -899,10 +1104,10 @@ function renderAbout() {
       <p class="muted small">A barcode-first testing log built for a single client's audit and initial workflow. It records what you scanned and what you found; their system does the rest.</p>
 
       <h2 class="sec">What's new</h2>
+      <p class="muted small"><b>V12</b> — the log now shows the session you are working in and nothing else, so a search finds today's work rather than every job on the phone. Tap <b>Select</b> to tick several items and remove them in one go. A run you have just logged can be taken back whole: while it is the last thing you recorded, Undo on the scan screen reads <b>Undo all 6</b>. The totals under the search box now name the session they are counting — the phone-wide figures live under the list on the Sessions screen. To correct something in another session, switch to it in Sessions first.</p>
       <p class="muted small"><b>V11</b> — a run of identical appliances can be logged in one go. In Initial mode, scan the first one, fill in the description, then set <b>How many</b> before you tap Continue. The app numbers the rest up from the one you scanned and shows you the exact range before it writes anything. If any of those numbers is already logged it stops and tells you which — it will never skip over one and carry on. Failing a run asks you to confirm, because only the first item was ever scanned. The log now shows <b>AUDIT</b> or <b>INITIAL</b> on every item, and the blue dot has gone.</p>
       <p class="muted small"><b>V10</b> — Change on the Location row now lists the locations from the session the item is actually in, rather than the one you happen to be working in. Before, an item from another engineer's batch — or from a job you finished last week — could be filed under a room that batch never contained, which the client's file would have shown as an item in a place that was not in it. Save &amp; scan is not offered on those items, because the room you are stood in belongs to today's session. The Sessions screen now says plainly that sharing a session is not the same as taking a backup.</p>
       <p class="muted small"><b>V9</b> — an item filed in the wrong room can now be moved by scanning. Tap it in the log, tap <b>Save &amp; scan</b> on the Location row, then stand in the right room and scan its location barcode. Anything else you had corrected on that item is saved first. Picking from the list still works exactly as before, and is still the way to do it when you are not stood in the room.</p>
-      <p class="muted small"><b>V8</b> — the scan screen has been tightened up so it fits on the phone without scrolling. The session you are working in, and the last thing you recorded, are both visible at the bottom of the screen while you are between scans rather than just off the end of it. The last item is now a single line with Edit and Undo beside it. Once a location is set it takes one line instead of two, and the "Scan an asset" prompt only explains itself in Initial mode, where there is something to explain.</p>
       
       <p class="muted small">© 2026 Peter Birchley. All rights reserved.</p>
     </main>
@@ -915,13 +1120,13 @@ function renderWelcome() {
     <main class="main welcome">
       <h1>PATGo Scan</h1>
 
-      <h2 class="sec">New in V11</h2>
+      <h2 class="sec">New in V12</h2>
       <ul>
-        <li><b>A shelf of identical items can go in as one run.</b> In Initial mode, scan the first one, fill in the description, then use <b>How many</b> before you tap Continue.</li>
-        <li><b>The rest are numbered up from the one you scanned</b> — 0998, 0999, 1000 and so on. The sheet shows you the exact range before anything is written. Check it against the labels in front of you.</li>
-        <li><b>If one of those numbers is already logged it stops and names it.</b> It will never skip a taken number and carry on, because that would move the end of your run without telling you. Do the run up to the gap, then start another after it.</li>
-        <li><b>PASS files the whole run on one tap. FAIL asks first.</b> Only the item you scanned came off a real label, so a fail is worth saying twice.</li>
-        <li><b>The log now says AUDIT or INITIAL on every item</b>, and the blue dot on each row has gone — exporting goes by session now, so it was marking almost everything.</li>
+        <li><b>The log is the session you are working in.</b> Other sessions are no longer mixed into it, so the list, the totals and the tab all count the same work. To correct something in an older batch, switch to it on the Sessions screen first.</li>
+        <li><b>Tap Select to tick several items at once</b> and remove them together. It ticks items, not locations, and <b>Select all</b> only takes what your search is currently showing — the number is on the button.</li>
+        <li><b>A run can be taken back whole.</b> While the run you just logged is the last thing you recorded, Undo on the scan screen reads <b>Undo all 6</b>. Log the run, check it in the log, come back — the offer is still there.</li>
+        <li><b>The totals under the search box now name the session</b> they are counting. They always did count just the one; they used to say "all time".</li>
+        <li><b>The figures for the whole phone</b> — every session, and anything not yet sent — sit under the list on the Sessions screen.</li>
       </ul>
 
       <h2 class="sec">The whole app in four lines</h2>

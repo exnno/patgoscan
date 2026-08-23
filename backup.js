@@ -231,7 +231,12 @@ function importBackupFile(file) {
 // everything has gone out.
 // ---------------------------------------------------------------------------
 function clearExportedRecords() {
-  const pending = unexportedCount();
+  // ⚠ V12 — THE ALL-SESSIONS COUNT, NOT THE LOG'S. Clearing wipes every session
+  // on the phone, so the guard has to look at every session on the phone.
+  // unexportedCount() was scoped to the current one in V12; using it here would
+  // let an engineer clear away another engineer's unsent session because their
+  // OWN session happened to be clean.
+  const pending = unexportedCountAllSessions();
   if (pending > 0) {
     openInfoSheet({
       title: 'Export first',
@@ -269,5 +274,9 @@ function clearExportedRecords() {
 // The nudge. A count, not a date — this app is used in bursts on a job and a day
 // counter would nag on the drive home.
 function exportNudgeDue() {
+  // ⚠ V12 — THE SESSION'S COUNT, DELIBERATELY. The nudge sends the engineer to
+  // a button that exports THIS SESSION and nothing else, so counting the whole
+  // phone offered to fix a number the button could not move: export, come back,
+  // and the nudge is still there saying twelve.
   return unexportedCount() >= EXPORT_NUDGE_AT;
 }

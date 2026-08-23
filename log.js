@@ -187,17 +187,77 @@ function locationChoices(sampleMax, sessionId) {
   return locs.sort((a, b) => byNewest(a.rec, b.rec));
 }
 
-// ⚠ V7: DELIBERATELY GLOBAL, unlike everything else here. It answers the clear
-// path and the export nudge, and both of those are about the WHOLE phone:
-// clearing destroys every session, so refusing while ANY session holds unsent
-// work is the only safe reading. Scoping this to the current session would let
-// an engineer clear away a session they had never exported.
+// ---------------------------------------------------------------------------
+// V12 — TWO COUNTS, AND WHICH ONE YOU WANT DEPENDS ON WHAT YOU ARE ABOUT TO DO.
+//
+// V7 had one, global, on the reasoning that it answered both the clear guard
+// and the export nudge and both were about the whole phone. Half of that was
+// wrong and V12's hard-scoped log is what made it visible:
+//
+//   unexportedCount()            — THIS SESSION. Everything that means "what
+//                                  will exporting send" or "how much unsent
+//                                  work is in front of me". Export has been
+//                                  session-scoped since V7 (recordsForExport),
+//                                  so a nudge counting Dave's imported session
+//                                  sent the engineer to a button that would not
+//                                  clear it — it would still say 12 afterwards.
+//
+//   unexportedCountAllSessions() — THE WHOLE PHONE. The clear guard, and only
+//                                  the clear guard, plus the diagnostics dump.
+//                                  Clearing destroys every session, so refusing
+//                                  while ANY session holds unsent work is the
+//                                  only safe reading. Scope this one and an
+//                                  engineer can clear away a session they never
+//                                  exported.
+//
+// ⚠ DO NOT COLLAPSE THEM BACK INTO ONE. They agree on a phone holding a single
+// session, which is most phones most days — so a merge would look correct right
+// up until the day it silently is not, which is the day two engineers' work is
+// on the same handset.
+//
+// ⚠ AND THE ALL-SESSIONS NUMBER MUST BE VISIBLE SOMEWHERE, because the clear
+// guard refuses using it. Being blocked by a number that appears on no screen
+// is being blocked by nothing you can act on — that is what the phone totals
+// line under the sessions list is for (renderSessions).
+// ---------------------------------------------------------------------------
 function unexportedCount() {
+  let n = 0;
+  for (let i = 0; i < state.records.length; i++) {
+    const r = state.records[i];
+    if (!inCurrentSession(r)) continue;
+    if (!r.exported) n++;
+  }
+  return n;
+}
+
+function unexportedCountAllSessions() {
   let n = 0;
   for (let i = 0; i < state.records.length; i++) {
     if (!state.records[i].exported) n++;
   }
   return n;
+}
+
+// V12 (12A/13A) — everything on the phone, in one pass, no session filter.
+//
+// ⚠ ONE PASS OVER THE RECORDS, NOT A SUM OF sessionCounts() ACROSS
+// sessionList(), and the difference is not academic. sessionCounts() matches on
+// `sessionId`, so a record whose session has gone — a delete that left records
+// behind, an import that half-landed — is counted here and invisible to the
+// sum. The clear guard counts the same way this does, so summing the parts
+// would put a number on screen that the guard then contradicts: "nothing left
+// to export" over a button that refuses to clear. This IS the phone.
+function phoneTotals() {
+  let pass = 0, fail = 0, locs = 0, unsent = 0;
+  for (let i = 0; i < state.records.length; i++) {
+    const r = state.records[i];
+    if (r.type === 'location') locs++;
+    else if (r.result === 'fail') fail++;
+    else if (r.result === 'pass') pass++;
+    if (!r.exported) unsent++;
+  }
+  return { pass: pass, fail: fail, locations: locs, unsent: unsent,
+           sessions: (state.sessions || []).length };
 }
 
 // ---------------------------------------------------------------------------
@@ -556,6 +616,29 @@ function deleteRecord(id) {
   return true;
 }
 
+// V12 — a batch delete, for the log's selection and for undoing a whole run.
+//
+// ⚠ IT GOES THROUGH deleteRecord() PER ID RATHER THAN FILTERING THE LIST ONCE,
+// and that is the same rule addItemRun() follows on the way in: one place knows
+// how to remove a record, and everything else asks it to. A filter over a set
+// of ids would look identical and quietly skip the location sweep above — the
+// pass that clears `locationId` from items pointing at a location being
+// removed, and the one that drops the current location if it was the one
+// deleted. Items stranded against a location id that no longer exists is a bug
+// that does not show up until an export three hours later.
+//
+// ⚠ THE COUNT RETURNED IS WHAT WAS ACTUALLY REMOVED, not what was asked for. An
+// id can go between the tick and the tap — another tab, a restore — and the
+// caller says "removed 5" because five is what happened.
+function deleteRecords(ids) {
+  if (!ids || !ids.length) return 0;
+  let n = 0;
+  for (let i = 0; i < ids.length; i++) {
+    if (deleteRecord(ids[i])) n++;
+  }
+  return n;
+}
+
 // ---------------------------------------------------------------------------
 // Quick-pick presets (V1.1)
 //
@@ -688,6 +771,32 @@ function lastItemRecord() {
     if (!best || byNewest(r, best) < 0) best = r;
   }
   return best;
+}
+
+// V12 (6A) — the run receipt, or nothing.
+//
+// ⚠ IT VERIFIES BEFORE IT OFFERS, exactly as renderMoveBar() does with a move
+// arm. The receipt is held in memory across navigation, so between committing a
+// run and looking back at the scan screen an id can have gone: undone one at a
+// time, deleted from the log, or swept away by a restore in another tab.
+// Offering "Undo all 6" over five records would delete five and report six, and
+// the engineer would never know which one it missed.
+//
+// ⚠ ALL OR NOTHING, NOT "the ones that are left". A partly-deleted run is no
+// longer the thing the receipt describes, and quietly shrinking the offer to
+// fit would mean the number on the button changed meaning without the engineer
+// doing anything. It clears itself instead and the ordinary single Undo — which
+// is never wrong — takes over.
+//
+// ⚠ IT CLEARS THE STALE RECEIPT AS IT GOES. Leaving it set would make every
+// later render walk a list of ids that will never verify again.
+function activeRun() {
+  const run = state.lastRun;
+  if (!run || !run.ids || run.ids.length < 2) return null;
+  for (let i = 0; i < run.ids.length; i++) {
+    if (!recordById(run.ids[i])) { state.lastRun = null; return null; }
+  }
+  return run;
 }
 
 // V6 (13D) — totals across the whole log, not the day. ⚠ V7: "the whole log"

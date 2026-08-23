@@ -93,10 +93,48 @@ function csvRow(cells) {
   return cells.map(csvCell).join(',');
 }
 
-// Sort helper: newest first, stable on equal timestamps by falling back to id.
+// Sort helper: newest first, stable on equal timestamps by falling back to the
+// asset code and only then to the id.
+//
+// ⚠ V12 — THE CODE TIEBREAK IS NOT COSMETIC, IT IS WHAT MAKES A RUN READABLE.
+// A run of six is written in one synchronous loop, so all six land in the SAME
+// millisecond and the old id fallback decided their order — and an id ends in
+// six random base-36 characters (uid()). A run committed as 0998→1003 therefore
+// appeared in the log in an order like 1003, 1000, 1001, 0999, 1002, 0998:
+// contiguous, because nothing else can be written between them, but internally
+// shuffled afresh on every commit. Reading a run back to check it wrote
+// correctly — which is the whole reason V12 lets you undo one — meant reading a
+// shuffled list. The export was never affected: csv.js sorts ascending by ts
+// and Array.prototype.sort is stable, so the client's file has always been in
+// the order the items were written.
+//
+// ⚠ COMPARED AS A NUMBER, NOT AS TEXT, and the case that forces it is a run
+// that grows its padding. PAT-998 ×5 writes 998, 999, 1000, 1001, 1002 — five
+// codes of two different widths — and a string compare puts '999' above '1002'
+// because it compares the first character. splitTrailingNumber() is the V11
+// helper that already knows how to take a code apart, and the 15-digit refusal
+// is the same one runCodesFrom() makes for the same reason: past that, parseInt
+// returns a number close to the label rather than equal to it.
+//
+// ⚠ THE ID FALLBACK STAYS UNDERNEATH. Two records can share a timestamp and a
+// code — a location and an item scanned in the same millisecond, or codes with
+// different prefixes — and a comparator that returns 0 there leaves the order
+// to the engine. The id is arbitrary but it is CONSISTENT, which is what stops
+// a list re-ordering itself under the thumb between two renders.
 function byNewest(a, b) {
   const d = (b.ts || 0) - (a.ts || 0);
   if (d !== 0) return d;
+  const pa = splitTrailingNumber(String(a.code || ''));
+  const pb = splitTrailingNumber(String(b.code || ''));
+  if (pa && pb && pa.prefix === pb.prefix &&
+      pa.digits.length <= 15 && pb.digits.length <= 15) {
+    const na = parseInt(pa.digits, 10);
+    const nb = parseInt(pb.digits, 10);
+    if (nb !== na) return nb - na;
+  } else {
+    const c = String(b.code || '').localeCompare(String(a.code || ''));
+    if (c !== 0) return c;
+  }
   return String(b.id || '').localeCompare(String(a.id || ''));
 }
 
