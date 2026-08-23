@@ -143,6 +143,18 @@ function resetApp(app) {
   // assertion would fail complaining that the scanner collected nothing, and
   // the record it silently moved belongs to a group that never mentioned moves.
   st.moveArmed = '';
+  // V12. ⚠ THE TWO NEW TRANSIENTS, AND THIS WAS FOUND THE HARD WAY WHILE
+  // WRITING 17-select: a group that THREW before reaching cancelSelect left
+  // logSelect as an array, and the next group's renderSelectBar() then took the
+  // "select mode is on" branch and failed asserting something about a mode it
+  // had never entered. Same shape as the move arm above — state that survives a
+  // reset makes a working feature fail in a group that never mentions it.
+  //
+  // lastRun is reset for the harsher reason: left set, renderLastItem() offers
+  // "Undo all 6" over a group's own single scan, and undoLastItem() would then
+  // delete a batch belonging to a test that finished several groups ago.
+  st.logSelect = null;
+  st.lastRun = null;
   st.mode = app.val('MODE_AUDIT');
   // V5. ⚠ HARNESS DEFECT FOUND DURING THIS RELEASE, and it is the classic
   // shape: these two are STICKY BY DESIGN, so without resetting them here the

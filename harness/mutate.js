@@ -39,7 +39,7 @@ const MUTATIONS = [
   // the version bump breaks the find string and the mutation reports SKIPPED.
   // Update it as part of the bump; a skip here means the cache-key invariant
   // is unguarded for that release, which is how a build ships without one.
-  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v11'", "const CACHE_VERSION = 'pat-v71'",
+  ['M03', 'sw.js', "const CACHE_VERSION = 'scan-v12'", "const CACHE_VERSION = 'pat-v71'",
     'cache key using the parent app prefix'],
   ['M04', 'utils.js', '(c) 2026 Peter Birchley. All rights reserved.', '(c) 2026',
     'copyright header stripped'],
@@ -186,7 +186,7 @@ const MUTATIONS = [
     'a dangling location id surviving a restore'],
 
   // --- privacy -----------------------------------------------------------
-  ['M49', 'bugreport.js', "'Records: ' + state.records.length + ' (' + unexportedCount() + ' unexported)',",
+  ['M49', 'bugreport.js', "'Records: ' + state.records.length + ' (' + unexportedCountAllSessions() + ' unexported)',",
     "'Records: ' + state.records.map(r => r.code).join(','),",
     'client asset numbers leaking into an emailed diagnostic'],
   ['M50', 'bugreport.js', "return '(message withheld — it may contain client data)';",
@@ -620,8 +620,8 @@ const MUTATIONS = [
     "      <span class=\"prompt-small\">${initial ? 'Initial — you will be asked for a description' : 'Audit — pass or fail only'}</span>",
     'the Audit sub-line restored for symmetry (3C undone)'],
   ['M157', 'render.js',
-    '      <div class="lastitem-acts">\n        <button type="button" class="linkbtn" data-action="editLastItem">Edit</button>\n        <button type="button" class="linkbtn is-danger" data-action="undoLastItem">Undo</button>\n      </div>\n    </div>',
-    '    </div>\n    <div class="lastitem-acts">\n      <button type="button" class="linkbtn" data-action="editLastItem">Edit</button>\n      <button type="button" class="linkbtn is-danger" data-action="undoLastItem">Undo</button>\n    </div>',
+    '      <div class="lastitem-acts">\n        <button type="button" class="linkbtn" data-action="editLastItem">Edit</button>',
+    '    </div>\n    <div class="lastitem-acts">\n      <button type="button" class="linkbtn" data-action="editLastItem">Edit</button>',
     'Edit and Undo back on a row of their own — margin-left:auto silently doing nothing'],
   ['M158', 'render.js',
     "    ${bits ? `<span class=\"lastitem-sub\">${escapeHTML(bits)}</span>` : ''}",
@@ -650,8 +650,7 @@ const MUTATIONS = [
   // REMOVE OR CHANGE the line that carries the invariant. Anchoring on the
   // statement plus its neighbour is what makes that unambiguous here, because
   // the same assignment appears twice in this file.
-  ['M161', 'render.js', "  state.moveArmed = '';\n  closeSheet();",
-    '  closeSheet();',
+  ['M161', 'render.js', "  state.moveArmed = '';\n  // V12.", '  // V12.',
     'an arm surviving navigation, armed invisibly on another screen'],
   ['M162', 'scanner.js', "    kind = state.moveArmed ? 'move' : 'search';",
     "    kind = 'search';",
@@ -673,7 +672,7 @@ const MUTATIONS = [
     "function armMove(id) {\n  setView('log');\n  state.moveArmed = id;",
     "function armMove(id) {\n  state.moveArmed = id;\n  setView('log');",
     'armMove ordering reversed — setView clears the arm it just set'],
-  ['M168', 'README.md', 'cache `scan-v11`', 'cache `scan-v10`',
+  ['M168', 'README.md', 'cache `scan-v12`', 'cache `scan-v11`',
     'the README front page left on the previous release'],
 
   // --- V10: the picker's cross-session hole -------------------------------
@@ -778,6 +777,89 @@ const MUTATIONS = [
     ".row-item { padding-right: 76px; }",
     "",
     'the badge with no gutter — a long asset code running underneath it'],
+
+  // --- V12: the scoped log, the selection, the receipt, the sort ----------
+  //
+  // ⚠ THE RULE FROM M161 STILL HOLDS: every one of these REMOVES or CHANGES the
+  // line carrying the invariant. A mutation that adds dead code to a working
+  // function breaks nothing and proves nothing.
+  //
+  // ⚠ AND FIVE MUTATIONS IN THIS FILE WENT STALE DURING V12 — M03, M49, M157,
+  // M161, M168 — every one of them reporting SKIPPED while the run still ended
+  // "0 survived". Skipped is not caught. The runner exits non-zero on a skip for
+  // that reason; do not relax it.
+  ['M190', 'render.js',
+    'let rows = state.records.filter(inCurrentSession).sort(byNewest);',
+    'let rows = state.records.slice().sort(byNewest);',
+    'the log listing every session again — a batch delete across other engineers\' work'],
+  ['M191', 'log.js',
+    '  let n = 0;\n  for (let i = 0; i < ids.length; i++) {\n    if (deleteRecord(ids[i])) n++;\n  }\n  return n;',
+    '  const n = state.records.filter(r => ids.indexOf(r.id) !== -1).length;\n  state.records = state.records.filter(r => ids.indexOf(r.id) === -1);\n  saveRecords();\n  return n;',
+    'a batch delete bypassing deleteRecord — the location sweep skipped, items stranded'],
+  ['M192', 'dispatch.js',
+    '      if (state.logSelect.indexOf(ids[i]) === -1) state.logSelect.push(ids[i]);',
+    '      state.logSelect = ids.slice();',
+    'Select all REPLACING the picks — rows ticked before a search silently dropped'],
+  ['M193', 'render.js',
+    "  state.logSelect = null;\n  closeSheet();",
+    '  closeSheet();',
+    'select mode surviving navigation — a log where tapping a row opens nothing'],
+  ['M194', 'render.js',
+    "  state.moveArmed = '';\n  // V12.",
+    "  state.moveArmed = '';\n  state.lastRun = null;\n  // V12.",
+    'the receipt cleared by navigation — the batch undo gone on the trip that finds the mistake'],
+  ['M195', 'log.js',
+    '    if (!recordById(run.ids[i])) { state.lastRun = null; return null; }',
+    '    if (!recordById(run.ids[i])) continue;',
+    'a part-deleted run still offered as whole — delete five, report six, name neither'],
+  ['M196', 'log.js',
+    '    const r = state.records[i];\n    if (!inCurrentSession(r)) continue;\n    if (!r.exported) n++;',
+    '    const r = state.records[i];\n    if (!r.exported) n++;',
+    'the two unexported counts merged again — the nudge counting what export cannot send'],
+  ['M197', 'utils.js',
+    '    const na = parseInt(pa.digits, 10);\n    const nb = parseInt(pb.digits, 10);\n    if (nb !== na) return nb - na;',
+    '',
+    'the sort tiebreak back on the random id — a run shuffled afresh on every commit'],
+  ['M198', 'utils.js',
+    '  if (pa && pb && pa.prefix === pb.prefix &&\n      pa.digits.length <= 15 && pb.digits.length <= 15) {',
+    '  if (false) {',
+    'a textual compare — a run that grows its padding reading 999 above 1002'],
+  ['M199', 'render.js',
+    '      <button type="button" class="row row-loc" data-action="editRecord" data-arg="${escapeHTML(r.id)}">',
+    '      <button type="button" class="row row-loc" data-action="${sel ? \'toggleSelect\' : \'editRecord\'}" data-arg="${escapeHTML(r.id)}">',
+    'locations made selectable (3A undone) — the sweep running invisibly at batch scale'],
+  ['M200', 'dispatch.js',
+    '  } else {\n    state.lastRun = null;\n  }\n  if (rec) feedback(result);',
+    '  }\n  if (rec) feedback(result);',
+    'the receipt outliving the run — Undo all 6 offered over an unrelated single scan'],
+  ['M201', 'log.js',
+    '    if (r.type === \'location\') locs++;\n    else if (r.result === \'fail\') fail++;',
+    '    if (!inCurrentSession(r)) continue;\n    if (r.type === \'location\') locs++;\n    else if (r.result === \'fail\') fail++;',
+    'the phone totals scoped to a session — the clear guard refusing on an invisible number'],
+  ['M202', 'dispatch.js',
+    '        state.logSelect = null;\n        showToast(\'Removed \' + n',
+    '        showToast(\'Removed \' + n',
+    'select mode left open over rows that have gone — a Select all whose number moved'],
+  ['M203', 'render.js',
+    '  if (q &&\n        String(r.code).toLowerCase().indexOf(q) === -1 &&',
+    '  if (false &&\n        String(r.code).toLowerCase().indexOf(q) === -1 &&',
+    'Select all ignoring the search — a labelled count that ticks rows off screen'],
+  ['M204', 'render.js',
+    "    <span class=\"counts-note\">${escapeHTML(currentSessionName())}</span>",
+    '    <span class="counts-note">all time</span>',
+    'the four-release-old lie restored — one session\'s totals called all time'],
+  ['M205', 'render.js',
+    "      ? 'Nothing in this session matches. Other sessions are not shown here — switch to one in Sessions.'",
+    "      ? 'Nothing matches that.'",
+    'the no-match copy hiding the scope — yesterday\'s asset reading as never logged'],
+  ['M206', 'render.js',
+    '  const sel = state.logSelect || [];\n  if (!sel.length) return \'\';\n  return `\n  <div class="selacts">',
+    '  const sel = state.logSelect || [];\n  return `\n  <div class="selacts">',
+    'a Delete 0 button standing over an empty selection'],
+  ['M207', 'log.js',
+    '  let n = 0;\n  for (let i = 0; i < ids.length; i++) {\n    if (deleteRecord(ids[i])) n++;\n  }\n  return n;\n}',
+    '  for (let i = 0; i < ids.length; i++) {\n    deleteRecord(ids[i]);\n  }\n  return ids.length;\n}',
+    'the count reporting what was asked rather than what was removed'],
 ];
 
 function run(cmd) {
