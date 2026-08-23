@@ -198,8 +198,8 @@ module.exports = function (app) {
     // and actively misleading in a failure list, which is the one moment
     // anybody reads them.
     const about = app.fn('renderAbout')();
-    A.eq('the app version is V11', app.val('APP_VERSION'), 'V11');
-    A.eq('the cache key matches', L.cacheVersion(), 'scan-v11');
+    A.eq('the app version is V12', app.val('APP_VERSION'), 'V12');
+    A.eq('the cache key matches', L.cacheVersion(), 'scan-v12');
     // ⚠ ROLLED THIS RELEASE, AND BACK IN STEP WITH APP_VERSION. V10 deliberately
     // did not roll (4A) because it corrected a list rather than adding anything
     // to learn. V11 hands the engineer a gesture that did not exist — a run of
@@ -207,7 +207,7 @@ module.exports = function (app) {
     // this app that writes codes nobody scanned. That has to be taught before
     // it is met, not discovered. This pair exists to catch a FEATURE release
     // that forgets to roll; V11 is exactly that release.
-    A.eq('the welcome version is V11', app.val('WELCOME_VERSION'), 'V11');
+    A.eq('the welcome version is V12', app.val('WELCOME_VERSION'), 'V12');
     // ⚠ AND THE MODAL STILL TEACHES THE VERSION IT CLAIMS. Not rolling is a
     // choice; leaving the constant on V9 while the copy describes something
     // else is a bug. The assertion is that the two agree, whichever release
@@ -249,9 +249,9 @@ module.exports = function (app) {
     // of a changelog with V10 anywhere in it, including at the BOTTOM, so it
     // could not fail while the entry survived at all. `entries[0]` below is the
     // assertion it was pretending to be, and it was already here.
-    A.eq('newest first', entries[0], '<b>V11</b>');
-    A.eq('oldest is V8', entries[3], '<b>V8</b>');
-    A.ok('with V7 dropped off the bottom', about.indexOf('<b>V7</b>') === -1);
+    A.eq('newest first', entries[0], '<b>V12</b>');
+    A.eq('oldest is V9', entries[3], '<b>V9</b>');
+    A.ok('with V8 dropped off the bottom', about.indexOf('<b>V8</b>') === -1);
     // The amber set is kept in the stylesheet on purpose — it is the one-edit
     // route back if the two apps ever do get confused on a job.
     //

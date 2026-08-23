@@ -587,13 +587,21 @@ module.exports = function (app) {
     app.fn('addItemRecord')({ code: 'A2', mode: AUDIT }, 'fail', 'Damaged Lead');
     // ⚠ BACKDATED PAST MIDNIGHT. Totals that only ever saw today's records
     // would be indistinguishable from todayCounts() — which is the exact
-    // confusion the "all time" label exists to prevent.
+    // confusion the note at the end of the strip exists to prevent.
     st.records.forEach((r) => { r.ts = 1600000000000; });
     const t = app.fn('logTotals')();
     A.eq('pass', t.pass, 1);
     A.eq('fail', t.fail, 1);
     A.eq('locations', t.locations, 1);
     A.eq('and today sees none of it', app.fn('todayCounts')().total, 0);
-    A.includes('the label distinguishes it', app.fn('renderLogTotals')(), 'all time');
+    // ⚠ V12 — THE LABEL NAMES THE SESSION, AND THE OLD WORDS ARE ASSERTED GONE.
+    // This read `includes('all time')` from V6 to V11 while logTotals() had been
+    // session-scoped since V7 — the assertion was guarding the wrong fact so
+    // faithfully that it kept a four-release-old lie on screen. Both halves are
+    // needed: the name alone would pass on a strip that also still said "all
+    // time" somewhere in it.
+    const strip = app.fn('renderLogTotals')();
+    A.includes('the label names the session it is counting', strip, app.fn('currentSessionName')());
+    A.ok('and no longer claims to be all time', strip.indexOf('all time') === -1);
   });
 };

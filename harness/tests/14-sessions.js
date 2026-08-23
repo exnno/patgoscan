@@ -235,16 +235,32 @@ module.exports = function (app) {
     A.eq('one fail', app.fn('logTotals')().fail, 1);
   });
 
-  A.group('14c5 ⚠ unexportedCount IS DELIBERATELY GLOBAL', () => {
-    // The one exception, and it is load-bearing in the other direction: it
-    // guards the CLEAR path, which destroys every session. Scoping it would let
-    // an engineer clear away a session they had never exported. Mutation M144.
+  A.group('14c5 ⚠ V12 — TWO UNEXPORTED COUNTS, AND THEY MUST NOT AGREE HERE', () => {
+    // Until V12 there was one, global, on the reasoning that the clear guard and
+    // the export nudge both spanned the phone. Only the clear guard does.
+    //
+    //   unexportedCountAllSessions() — guards CLEAR, which destroys every
+    //     session. Scoping it would let an engineer clear away a session they
+    //     had never exported. Mutation M144.
+    //   unexportedCount() — the log tab, the nudge and the Settings row, all of
+    //     which mean "what will exporting send", and export has been scoped to
+    //     the session since V7.
+    //
+    // ⚠ BOTH ARE ASSERTED IN ONE PLACE ON PURPOSE. The two are equal on a phone
+    // holding a single session, which is most phones most days — so a test that
+    // only ever saw one session would stay green if they were merged back into
+    // one function. The second session is the whole assertion.
     F.resetApp(app);
     app.fn('addItemRecord')({ code: 'MINE', mode: AUDIT }, 'pass', '');
     withSecondSession(() => {
       app.fn('addItemRecord')({ code: 'THEIRS', mode: AUDIT }, 'pass', '');
     });
-    A.eq('it counts every session on the phone', app.fn('unexportedCount')(), 2);
+    A.eq('the clear guard counts every session on the phone',
+      app.fn('unexportedCountAllSessions')(), 2);
+    A.eq('and the log/nudge count sees only this one',
+      app.fn('unexportedCount')(), 1);
+    A.notEq('⚠ they are not the same function', app.fn('unexportedCount')(),
+      app.fn('unexportedCountAllSessions')());
   });
 
   A.group('14c6 switching sessions clears the sticky location', () => {
